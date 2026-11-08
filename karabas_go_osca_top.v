@@ -52,6 +52,7 @@ module karabas_go_osca_top (
     always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked};
     wire run = lock_sr[3];
     wire        romloader_active;
+    reg [31:0] dbg_hold = 32'd0;                       // counts while OSCA runs: bit 29 = status screen / OSCA picture, bit 30 = fixed palette test
     wire        sram_run, sram_done, sram_alias0;  wire [20:0] s_ma, s_amask;  wire [15:0] s_md;  wire s_oe;  wire [1:0] s_wr_n, s_rd_n;  wire [7:0] s_dm0, s_dm1;
     wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
     // hold OSCA in reset while the MCU writes the boot image (romloader_active is a clk96 signal)
@@ -139,7 +140,7 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg_paddr(pal_probe), .dbg_pdata(pal_pdata),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_hold[30]), .dbg_pdata(pal_pdata),
         .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -164,7 +165,6 @@ module karabas_go_osca_top (
     wire osca_run = run & ~load_s[1] & init_s[1];
     reg        ld_seen = 1'b0, ld_done = 1'b0, wr_seen = 1'b0;
     reg [15:0] ld_bytes = 16'd0;
-    reg [31:0] dbg_hold = 32'd0;
     always @(posedge clk96) begin
         if (romloader_active) ld_seen <= 1'b1;
         if (ld_seen && !romloader_active) ld_done <= 1'b1;
@@ -215,6 +215,15 @@ module karabas_go_osca_top (
         if (!c_iorq_n && !c_rd_n && c_m1_n) f2[5] <= 1'b1;
         f2[6] <= c_rst_ok;
     end
+    // width of the palette write strobe (cpu_write high with the palette enabled) in clk96 ticks: last and minimum
+    reg [15:0] sw_cnt = 16'd0, sw_last = 16'd0, sw_min = 16'hffff;  reg sw_q = 1'b0;
+    wire sw_act = ~dbg3[21] & (dbg3[19] | dbg3[20]);
+    always @(posedge clk96) begin
+        sw_q <= sw_act;
+        if (sw_act) begin if (sw_cnt != 16'hffff) sw_cnt <= sw_cnt + 16'd1; end
+        else sw_cnt <= 16'd0;
+        if (sw_q && !sw_act) begin sw_last <= sw_cnt; if (sw_cnt < sw_min) sw_min <= sw_cnt; end
+    end
     // ---- inside the running core (clk16 domain), per frame: rgb_oe high, x/y window both high, palette index non-zero, background pixel non-zero
     wire [7:0] k_pal = dbg3[7:0];  wire k_oe = dbg3[8], k_xw = dbg3[9], k_yw = dbg3[10];  wire [7:0] k_bg = dbg3[18:11];
     wire [7:0] k_cd = dbg3[29:22];  wire k_pclk = dbg3[21], k_pen1 = dbg3[20], k_pen0 = dbg3[19];
@@ -236,7 +245,7 @@ module karabas_go_osca_top (
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(k_m4), .first_ea(k_m5),
-        .m_hs(m_hs), .m_lines(pal_v1), .m_nb(m_nb), .m_col(pal_v2),
+        .m_hs(m_hs), .m_lines(sw_last), .m_nb(m_nb), .m_col(sw_min),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

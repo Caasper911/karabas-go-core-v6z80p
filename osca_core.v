@@ -1,5 +1,7 @@
 // generated from osca_pal.sch
 module osca_core (
+    input  wire        clk_fast,    // 96 MHz: the palette write strobe can be as short as 3 of its ticks (31 ns), shorter than a 16 MHz cycle
+    input  wire        dbg_fixpal,  // bring-up: 1 = the colour outputs come from a fixed palette (colour = ~index) instead of the palette RAM
     input  wire [8:0]  dbg_paddr,  // bring-up: palette probe address, and the two palette bytes there {zero_red BRAM, green_blue BRAM}
     output wire [15:0] dbg_pdata,
     output wire [1:0] dbg_pal,     // bring-up taps: {colour_select[8] (displayed palette page), palette_write_select (written palette page)}
@@ -636,8 +638,32 @@ module osca_core (
     and2 XLXI_2459 (.I0(lb_build_addr[8]), .I1(XLXN_6790), .O(right_border_stop));
     buf_x XLXI_2624 (.I(live_palette), .O(colour_select[8]));
     buf_x XLXI_2623 [7:0] (.I(modified_palette_index[7:0]), .O(colour_select[7:0]));
-    ramb4_s8_s8 XLXI_2620 (.ADDRC(dbg_paddr), .DOC(dbg_pd0), .ADDRA(palette_wr_addr[8:0]), .ADDRB(colour_select[8:0]), .CLKA(XLXN_2825), .CLKB(clock_16mhz_dist), .DIA(cpu_databus_in[7:0]), .DIB(XLXN_7651[7:0]), .ENA(XLXN_2828), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(green_blue[7:0]));
-    ramb4_s8_s8 XLXI_2621 (.ADDRC(dbg_paddr), .DOC(dbg_pd1), .ADDRA(palette_wr_addr[8:0]), .ADDRB(colour_select[8:0]), .CLKA(XLXN_2825), .CLKB(clock_16mhz_dist), .DIA(cpu_databus_in[7:0]), .DIB(XLXN_7651[7:0]), .ENA(XLXN_7421), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(zero_red[7:0]));
+    // fixed palette for the bring-up test: same pipeline position as the palette RAM output (registered, cleared outside rgb_oe like its RSTB)
+    reg [7:0] fx_gb = 8'd0, fx_red = 8'd0;
+    always @(posedge clock_16mhz_dist) begin
+        fx_gb  <= rgb_oe ? ~colour_select[7:0] : 8'h00;
+        fx_red <= rgb_oe ? {4'b0000, ~colour_select[7:4]} : 8'h00;
+    end
+    wire [7:0] gb_ram, zr_ram;
+    assign green_blue = dbg_fixpal ? fx_gb  : gb_ram;
+    assign zero_red   = dbg_fixpal ? fx_red : zr_ram;
+    // Palette write, synchronous on the 96 MHz clock (bring-up fix for the board).  The original clocks the palette RAM with the INVERTED cpu_write (the write is done at
+    // the end of the strobe); on the FPGA that clock arrives later than the address / data, which change at the same clk16 edge, so the entry was not stored.  The strobe is
+    // 3..9 ticks of 96 MHz wide.  Address, data and byte enables are pipelined every tick; when the strobe has ended the values from two ticks before its end are written.
+    reg [8:0] pal_a1 = 9'd0, pal_a2 = 9'd0, pal_a_q = 9'd0;  reg [7:0] pal_d1 = 8'd0, pal_d2 = 8'd0, pal_d_q = 8'd0;
+    reg pal_x1 = 1'b0, pal_x2 = 1'b0, pal_x_q = 1'b0, pal_y1 = 1'b0, pal_y2 = 1'b0, pal_y_q = 1'b0, pal_w1 = 1'b0, pal_w2 = 1'b0;
+    always @(posedge clk_fast) begin
+        pal_w1 <= cpu_write;  pal_w2 <= pal_w1;
+        pal_a1 <= palette_wr_addr[8:0];  pal_a2 <= pal_a1;  pal_a_q <= pal_a2;
+        pal_d1 <= cpu_databus_in[7:0];   pal_d2 <= pal_d1;  pal_d_q <= pal_d2;
+        pal_x1 <= XLXN_2828;  pal_x2 <= pal_x1;  pal_x_q <= pal_x2;
+        pal_y1 <= XLXN_7421;  pal_y2 <= pal_y1;  pal_y_q <= pal_y2;
+    end
+    wire pal_fall = pal_w2 & ~pal_w1;                      // the strobe was seen high two ticks ago and low one tick ago
+    wire pal_en0 = pal_fall & pal_x_q;
+    wire pal_en1 = pal_fall & pal_y_q;
+    ramb4_s8_s8 XLXI_2620 (.ADDRC(dbg_paddr), .DOC(dbg_pd0), .ADDRA(pal_a_q[8:0]), .ADDRB(colour_select[8:0]), .CLKA(clk_fast), .CLKB(clock_16mhz_dist), .DIA(pal_d_q[7:0]), .DIB(XLXN_7651[7:0]), .ENA(pal_en0), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(gb_ram[7:0]));
+    ramb4_s8_s8 XLXI_2621 (.ADDRC(dbg_paddr), .DOC(dbg_pd1), .ADDRA(pal_a_q[8:0]), .ADDRB(colour_select[8:0]), .CLKA(clk_fast), .CLKB(clock_16mhz_dist), .DIA(pal_d_q[7:0]), .DIB(XLXN_7651[7:0]), .ENA(pal_en1), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(zr_ram[7:0]));
     gnd XLXI_374 [7:0] (.G(XLXN_7651[7:0]));
     buf_x XLXI_2629 [7:0] (.I(cpu_address_bus[8:1]), .O(palette_wr_addr[7:0]));
     inv XLXI_413 (.I(cpu_write), .O(XLXN_2825));
