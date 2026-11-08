@@ -21,6 +21,8 @@ module sprite_system513 (
     input wire cpu_sel_spr_ctrl,
     output wire spr_pri_option
 );
+    wire [8:0] buf_write_addr;
+    wire height_c, height_d, linebuf_wren;
     wire [8:0] buf_write_addr_d;
     wire linebuf_wren_d, modlc0_d, height_c_d, height_d_d;
     fd XLXI_9100 [8:0] (.C(clk_in_16mhz), .D(buf_write_addr[8:0]), .Q(buf_write_addr_d[8:0]));
@@ -30,7 +32,6 @@ module sprite_system513 (
     fd XLXI_9104 (.C(clk_in_16mhz), .D(height_d), .Q(height_d_d));
 
     wire [4:0] block_diff;
-    wire [8:0] buf_write_addr;
     wire [15:0] bus_gnd;
     wire [7:0] control_reg_addr;
     wire [15:0] control_reg_output;
@@ -38,13 +39,10 @@ module sprite_system513 (
     wire [7:0] diffin;
     wire height_a;
     wire height_b;
-    wire height_c;
-    wire height_d;
     wire height_is_zero;
     wire inv_cpu_wr_line;
     wire inv_main_clock_16mhz;
     wire justsomegrounds;
-    wire linebuf_wren;
     wire no_sprite_data;
     wire [7:0] pixel_to_write;
     wire [15:0] selected_word;

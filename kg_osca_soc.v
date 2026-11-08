@@ -65,7 +65,8 @@ module kg_osca_soc (
 
     // ---------------------------------------------------------------- core <-> memory
     wire [7:0]  vram_wdata, spr_wdata;  wire vram_wdata_oe, spr_wdata_oe;
-    wire [7:0]  vram_rdata, vram_rdata2, spr_rdata, sys_rdata;
+    wire [7:0]  vram_rdata, vram_rdata2, spr_rdata;
+    (* keep = "true" *) wire [7:0] sys_rdata;   // kept so that ise/osca676p.ucf can name it (false path sys RAM read data -> VRAM write data)
     wire [18:0] vram_addr_out;  wire [16:0] spr_addrbus;
     wire        vram_wr, vram_rd, spr_ram_wr, spr_ram_rd;
     wire        system_ram_a14, system_ram_a15, system_ram_a16, system_ram_a17, system_ram_a18, system_ram_cs;

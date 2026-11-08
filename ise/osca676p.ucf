@@ -144,3 +144,15 @@ NET "clk96" TNM_NET = "TNM_clk96";
 TIMESPEC "TS_clk96" = PERIOD "TNM_clk96" 10.417 ns HIGH 50%;
 NET "clk16" TNM_NET = "TNM_clk16";
 TIMESPEC "TS_clk16" = PERIOD "TNM_clk16" 62.5 ns HIGH 50%;
+
+# ---- false paths (kg_osca_soc.v: sys_rdata is kept for this).  System RAM read data reaches d_bus only while the CPU reads system RAM;
+#      the video RAM write data (core buft8 on d_bus) is used only for CPU accesses to video RAM, which are never system RAM reads.
+#      The MCU loader owns the SDRAM port only while the core is in reset.
+NET "soc/sys_rdata<*>"  TPTHRU = "TH_SYSRD";
+INST "soc/mem/md_o*"    TNM = "GRP_MDO";
+TIMESPEC "TS_sysrd_mdo" = FROM FFS THRU "TH_SYSRD" TO "GRP_MDO" TIG;
+INST "u_mcu/u_loader/*" TNM = "GRP_LOADER";
+TIMESPEC "TS_loader_mdo" = FROM "GRP_LOADER" TO "GRP_MDO" TIG;
+# the loader changes address/data/ld_active at SPI rate (many 96 MHz clocks apart): effectively multi-cycle into the SDRAM controller
+INST "soc/sdram/*"      TNM = "GRP_SDRAM";
+TIMESPEC "TS_loader_sdram" = FROM "GRP_LOADER" TO "GRP_SDRAM" TIG;

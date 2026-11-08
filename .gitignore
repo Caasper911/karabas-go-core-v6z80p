@@ -3,3 +3,8 @@ ise/work/
 *.vvp
 __pycache__/
 modules/
+ise/_xmsgs/
+ise/*.lso
+ise/*.ngc
+ise/*.ngr
+ise/*_xst.xrpt
