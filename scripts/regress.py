@@ -63,7 +63,7 @@ def main():
     root = os.path.abspath(a.root); build = os.path.abspath(a.build or os.path.join(root, 'build'))
     only = [x for x in a.only.split(',') if x]
     exe = os.path.join(build, a.cfg, 'Vtb_boot')
-    if not a.no_run and not os.path.exists(exe):
+    if not a.no_run and not (os.path.exists(exe) or os.path.exists(exe + '.exe')):
         sys.exit(f'{exe} not found: run scripts/sim.sh build {a.cfg}')
     results = []
     for name, img, ms, frame, golden, checks in TESTS:
@@ -71,7 +71,7 @@ def main():
             continue
         out = os.path.join(build, 'runs', a.cfg, name)
         if not a.no_run:
-            subprocess.run([os.path.join(root, 'scripts', 'sim.sh'), 'run', a.cfg, os.path.join(root, img), out, str(ms)], check=True)
+            subprocess.run(['bash', os.path.join(root, 'scripts', 'sim.sh'), 'run', a.cfg, os.path.join(root, img), out, str(ms)], check=True)
         details, ok = [], True
         log = open(os.path.join(out, 'run.log'), errors='replace').read() if os.path.exists(os.path.join(out, 'run.log')) else ''
         if frame:
