@@ -131,11 +131,33 @@ module karabas_go_osca_top (
                           .clk_line(kb_clk_line), .data_line(kb_dat_line));
 
     // video: OSCA's a..d are the 4 bits of each channel, a = MSB;  VGA-mode syncs: HS and (tv_sync) VS
-    assign VGA_R  = {col_red_a,   col_red_b,   col_red_c,   col_red_d,   col_red_a,   col_red_b,   col_red_c,   col_red_d};
-    assign VGA_G  = {col_green_a, col_green_b, col_green_c, col_green_d, col_green_a, col_green_b, col_green_c, col_green_d};
-    assign VGA_B  = {col_blue_a,  col_blue_b,  col_blue_c,  col_blue_d,  col_blue_a,  col_blue_b,  col_blue_c,  col_blue_d};
-    assign VGA_HS = horizontal_sync;
-    assign VGA_VS = tv_sync;
+    wire [7:0] osca_r = {col_red_a,   col_red_b,   col_red_c,   col_red_d,   col_red_a,   col_red_b,   col_red_c,   col_red_d};
+    wire [7:0] osca_g = {col_green_a, col_green_b, col_green_c, col_green_d, col_green_a, col_green_b, col_green_c, col_green_d};
+    wire [7:0] osca_b = {col_blue_a,  col_blue_b,  col_blue_c,  col_blue_d,  col_blue_a,  col_blue_b,  col_blue_c,  col_blue_d};
+
+    // ---- bring-up status screen (kg_dbg_video), shown until OSCA has been running for ~2.8 s.  Independent of OSCA's own video.
+    wire osca_run = run & ~load_s[1] & init_s[1];
+    reg        ld_seen = 1'b0, ld_done = 1'b0, wr_seen = 1'b0;
+    reg [15:0] ld_bytes = 16'd0;
+    reg [28:0] dbg_hold = 29'd0;
+    always @(posedge clk96) begin
+        if (romloader_active) ld_seen <= 1'b1;
+        if (ld_seen && !romloader_active) ld_done <= 1'b1;
+        if (rom_wr) begin wr_seen <= 1'b1; if (ld_bytes != 16'hffff) ld_bytes <= ld_bytes + 16'd1; end
+        if (osca_run && !dbg_hold[28]) dbg_hold <= dbg_hold + 29'd1;
+    end
+    wire [7:0] dbg_r, dbg_g, dbg_b;  wire dbg_hs, dbg_vs;
+    reg [26:0] hb27 = 27'd0;
+    always @(posedge clk96) hb27 <= hb27 + 27'd1;
+    kg_dbg_video u_dbg (.clk96(clk96),
+        .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}),
+        .bytes(ld_bytes), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
+    wire show_dbg = ~dbg_hold[28];
+    assign VGA_R  = show_dbg ? dbg_r  : osca_r;
+    assign VGA_G  = show_dbg ? dbg_g  : osca_g;
+    assign VGA_B  = show_dbg ? dbg_b  : osca_b;
+    assign VGA_HS = show_dbg ? dbg_hs : horizontal_sync;
+    assign VGA_VS = show_dbg ? dbg_vs : tv_sync;
 
     // audio
     wire [15:0] pcm_l, pcm_r;
