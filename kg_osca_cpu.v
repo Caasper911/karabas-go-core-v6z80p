@@ -45,21 +45,28 @@ module kg_osca_cpu (
     wire [7:0]  cpu_do;
     wire        cpu_mreq_n, cpu_iorq_n, cpu_rd_n, cpu_wr_n, cpu_rfsh_n, cpu_halt_n;
 
-`ifdef KG_CPU_TV80
-    // Verilog port of T80 (tv80/) - used for iverilog simulation; compile with -DTV80_REFRESH
-    // so that refresh cycles assert MREQ# like the real Z80 and T80s do.
-    tv80s #(.Mode(0), .T2Write(1), .IOWait(1)) u_z80 (
-        .reset_n(reset_n), .clk(clk), .wait_n(cpu_wait_n), .int_n(int_n), .nmi_n(nmi_n), .busrq_n(busrq_n),
-        .m1_n(m1_n), .mreq_n(cpu_mreq_n), .iorq_n(cpu_iorq_n), .rd_n(cpu_rd_n), .wr_n(cpu_wr_n),
-        .rfsh_n(cpu_rfsh_n), .halt_n(cpu_halt_n), .busak_n(busak_n),
-        .A(cpu_a), .di(d_bus), .dout(cpu_do));
-`else
-    // Daniel Wallner's T80s (VHDL, t80/) - default; ISE builds the mixed Verilog/VHDL project.
+`ifdef KG_CPU_T80S_SYNTH
+    // the board's T80s (VHDL), translated to Verilog by `ghdl --synth --out=verilog` (build/t80/t80s_synth.v): simulation with the real CPU
+    T80s u_z80 (
+        .RESET_n(reset_n), .CLK(clk), .CEN(1'b1), .WAIT_n(cpu_wait_n), .INT_n(int_n), .NMI_n(nmi_n), .BUSRQ_n(busrq_n),
+        .M1_n(m1_n), .MREQ_n(cpu_mreq_n), .IORQ_n(cpu_iorq_n), .RD_n(cpu_rd_n), .WR_n(cpu_wr_n),
+        .RFSH_n(cpu_rfsh_n), .HALT_n(cpu_halt_n), .BUSAK_n(busak_n), .OUT0(1'b0),
+        .A(cpu_a), .DI(d_bus), .DO(cpu_do));
+`elsif KG_CPU_T80S
+    // Daniel Wallner's T80s (VHDL, t80/): NOT used any more.  In simulation (ghdl --synth) it did not run FLOS with this bus, while the tv80 below does (11/11 regression).
     T80s #(.Mode(0), .T2Write(1), .IOWait(1)) u_z80 (
         .RESET_n(reset_n), .CLK(clk), .CEN(1'b1), .WAIT_n(cpu_wait_n), .INT_n(int_n), .NMI_n(nmi_n), .BUSRQ_n(busrq_n),
         .M1_n(m1_n), .MREQ_n(cpu_mreq_n), .IORQ_n(cpu_iorq_n), .RD_n(cpu_rd_n), .WR_n(cpu_wr_n),
         .RFSH_n(cpu_rfsh_n), .HALT_n(cpu_halt_n), .BUSAK_n(busak_n), .OUT0(1'b0),
         .A(cpu_a), .DI(d_bus), .DO(cpu_do));
+`else
+    // Verilog port of T80 (tv80/): the CPU of the simulation AND of the board (build with TV80_REFRESH defined, see ise/osca676p.xst) so that refresh cycles assert MREQ#
+    // like the real Z80 does.
+    tv80s #(.Mode(0), .T2Write(1), .IOWait(1)) u_z80 (
+        .reset_n(reset_n), .clk(clk), .wait_n(cpu_wait_n), .int_n(int_n), .nmi_n(nmi_n), .busrq_n(busrq_n),
+        .m1_n(m1_n), .mreq_n(cpu_mreq_n), .iorq_n(cpu_iorq_n), .rd_n(cpu_rd_n), .wr_n(cpu_wr_n),
+        .rfsh_n(cpu_rfsh_n), .halt_n(cpu_halt_n), .busak_n(busak_n),
+        .A(cpu_a), .di(d_bus), .dout(cpu_do));
 `endif
 
     wire cpu_owns = busak_n;                       // BUSACK# high = the Z80 has the bus

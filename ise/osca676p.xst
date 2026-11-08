@@ -5,7 +5,8 @@ run
 -ofn osca676p
 -ofmt NGC
 -p xc6slx25-2-ftg256
--vlgincdir {"../modules/rtl/mcu"}
+-vlgincdir {"../modules/rtl/mcu" "../tv80"}
+-define {TV80_REFRESH}
 -top karabas_go_osca_top
 -opt_mode Speed
 -opt_level 2
