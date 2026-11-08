@@ -37,13 +37,16 @@ module kg_sdram_check #(
     output reg  [15:0] err_final = 16'd0,
     output reg  [15:0] first_addr = 16'd0,   // first mismatch of the first read test (cidx 0)
     output reg  [7:0]  first_exp = 8'd0,
-    output reg  [7:0]  first_act = 8'd0
+    output reg  [7:0]  first_act = 8'd0,
+    input  wire [14:0] fa_i,                 // opcode fetch address of the running CPU: the expected byte of the boot image (valid two ticks later)
+    output reg  [7:0]  fe_o = 8'd0
 );
     reg [7:0] img [0:32767];
     reg [7:0] exp_q = 8'd0;
     always @(posedge clk) begin
         if (wr_i) img[addr_i] <= data_i;
         exp_q <= img[addr_o[14:0]];
+        fe_o  <= img[fa_i];
     end
 
     reg [7:0] rd_q = 8'd0;

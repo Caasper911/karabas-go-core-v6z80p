@@ -52,10 +52,11 @@ module karabas_go_osca_top (
     always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked};
     wire run = lock_sr[3];
     wire        romloader_active;
+    reg [15:0] f_a = 16'd0;  reg [7:0] f_d = 8'd0;                 // address / opcode of the current opcode fetch
     reg [31:0] dbg_hold = 32'd0;                       // counts while OSCA runs: bit 29 = status screen / OSCA picture, bit 30 = fixed palette test
     wire        vram_run, vram_done;  wire [18:0] v_addr;  wire v_wr_n;  wire [7:0] v_wd;  wire [15:0] vt_es, vt_er, sv_err;  wire [63:0] vt_act;  wire [7:0] sv_a0, sv_a1;  wire sv_done;
     wire        sram_run, sram_done, sram_alias0;  wire [20:0] s_ma, s_amask;  wire [15:0] s_md;  wire s_oe;  wire [1:0] s_wr_n, s_rd_n;  wire [7:0] s_dm0, s_dm1;
-    wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
+    wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_fexp;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
     // hold OSCA in reset while the MCU writes the boot image (romloader_active is a clk96 signal)
     reg [1:0] load_s = 2'b00;
     always @(posedge clk16) load_s <= {load_s[0], romloader_active | chk_run | sram_run | vram_run};
@@ -176,7 +177,7 @@ module karabas_go_osca_top (
     kg_sdram_check u_chk (.clk(clk96), .wr_i(rom_wr), .addr_i(rom_addr[14:0]), .data_i(rom_data), .go(ld_seen & ~romloader_active), .init_done(sd_init), .run(chk_run),
         .addr_o(chk_addr), .wr_o(chk_wr), .data_o(chk_data), .rst_o(chk_rst), .pol_o(chk_pol), .cap_o(chk_cap),
         .rd_valid(chk_rdvalid), .rdata(chk_rdata), .done(chk_done), .matrix_done(chk_mdone), .timeout(chk_tmo), .cell_ok(chk_cok), .cell_bad(chk_cbad),
-        .err_final(chk_efin), .first_addr(chk_fa), .first_exp(chk_fe), .first_act(chk_fact));
+        .err_final(chk_efin), .first_addr(chk_fa), .first_exp(chk_fe), .first_act(chk_fact), .fa_i(f_a[14:0]), .fe_o(chk_fexp));
     // SRAM self test after the SDRAM self test (the core is still in reset)
     kg_sram_test u_sram (.clk(clk96), .go(chk_done), .run(sram_run), .ma(s_ma), .md(s_md), .oe(s_oe), .wr_n(s_wr_n), .rd_n(s_rd_n), .md_i(MD),
         .done(sram_done), .dmask0(s_dm0), .dmask1(s_dm1), .amask(s_amask), .alias0(sram_alias0), .vgo(vram_done), .vdone(sv_done), .verr(sv_err), .vact0(sv_a0), .vact1(sv_a1));
@@ -248,7 +249,7 @@ module karabas_go_osca_top (
     // where does the CPU run into a NOP slide?  The last three non-NOP opcode fetches before the first run of 16 NOP fetches are kept (address and opcode)
     reg [15:0] nn_pc0 = 16'd0, nn_pc1 = 16'd0, nn_pc2 = 16'd0;  reg [7:0] nn_op0 = 8'd0, nn_op1 = 8'd0, nn_op2 = 8'd0;
     reg [15:0] sl_pc0 = 16'd0, sl_pc1 = 16'd0, sl_pc2 = 16'd0;  reg [7:0] sl_op0 = 8'd0, sl_op1 = 8'd0, sl_op2 = 8'd0;
-    reg [4:0]  nop_run = 5'd0;  reg slide_seen = 1'b0, fetch_q = 1'b0;  reg [15:0] f_a = 16'd0;  reg [7:0] f_d = 8'd0;
+    reg [4:0]  nop_run = 5'd0;  reg slide_seen = 1'b0, fetch_q = 1'b0;  
     always @(posedge clk16) begin
         fetch_q <= fetch;
         if (fetch) begin f_a <= c_a; f_d <= c_d; end
@@ -264,11 +265,23 @@ module karabas_go_osca_top (
             end
         end
     end
+    // every opcode fetch inside the boot image is compared with the copy of the image kept for the SDRAM test (6 ticks after the fetch ended)
+    reg        mm_pend = 1'b0;  reg [15:0] mm_cnt = 16'd0, mm_addr = 16'd0;  reg [7:0] mm_exp = 8'd0, mm_act = 8'd0;  reg [7:0] mm_d = 8'd0;  reg [15:0] mm_a = 16'd0;
+    always @(posedge clk16) begin
+        if (!fetch && fetch_q) begin mm_pend <= 1'b1; mm_d <= f_d; mm_a <= f_a; end
+        else if (mm_pend) begin
+            mm_pend <= 1'b0;
+            if (mm_a >= 16'h1000 && mm_a < 16'd20142 && chk_fexp !== mm_d) begin
+                if (mm_cnt != 16'hffff) mm_cnt <= mm_cnt + 16'd1;
+                if (mm_cnt == 16'd0) begin mm_addr <= mm_a; mm_exp <= chk_fexp; mm_act <= mm_d; end
+            end
+        end
+    end
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(dbg5[15:0]), .first_ea(dbg5[31:16]),
-        .m_hs(sl_pc0), .m_lines(sl_pc1), .m_nb(m_nb), .m_col({sl_op0, sl_op1}),
+        .m_hs(mm_addr), .m_lines({mm_exp, mm_act}), .m_nb(m_nb), .m_col(mm_cnt),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

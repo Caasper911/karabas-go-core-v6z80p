@@ -22,7 +22,7 @@ module tb_sdram_check;
     kg_sdram_check chk (.clk(clk), .wr_i(l_wr), .addr_i(l_addr[14:0]), .data_i(l_data), .go(loader_done), .init_done(init_done), .run(chk_run),
         .addr_o(chk_addr), .wr_o(chk_wr), .data_o(chk_data), .rst_o(chk_rst), .pol_o(chk_pol), .cap_o(chk_cap),
         .rd_valid(rd_valid), .rdata(rdata), .done(chk_done), .matrix_done(mdone), .timeout(tmo), .cell_ok(cok), .cell_bad(cbad),
-        .err_final(efin), .first_addr(fa), .first_exp(fe), .first_act(fact));
+        .err_final(efin), .first_addr(fa), .first_exp(fe), .first_act(fact), .fa_i(15'd0), .fe_o());
     integer i, seed = 7; reg [7:0] d;
     initial begin
         if ($value$plusargs("corrupt=%d", corrupt)) ;

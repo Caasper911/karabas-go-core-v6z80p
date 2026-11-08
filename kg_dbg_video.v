@@ -16,8 +16,8 @@
 //              green = no mismatch, red = 100 or more, yellow = a few
 //   row 10 (magenta) = {y_window[7:0], xstop[3:0], xstart[3:0]} of the video registers, row 11 (orange) = {yhws_a, xhws, live_palette, dualpf, ext_tile, tilemap, wide_border, interlace, hi_res, video_enable};
 //     simulation after FLOS has set up the video: row 10 = C838, row 11 = 5001.
-//   rows 12, 13, 15: the first run of 16 NOP fetches (a NOP slide) and what led to it: 12 = address of the last non-NOP instruction before the slide, 13 = the one before it,
-//     15 = {opcode of the last, opcode of the one before}; row 14: non-black output pixels per frame
+//   rows 12, 13, 15: every opcode fetch in the boot image is compared with the image copy kept for the SDRAM test: 12 = address of the FIRST mismatch, 13 = {expected byte, byte the CPU read},
+//     15 = number of mismatching fetches (all zero = the CPU reads its code correctly); row 14: non-black output pixels per frame
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142
