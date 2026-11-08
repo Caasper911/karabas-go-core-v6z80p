@@ -56,7 +56,9 @@ module kg_osca_soc (
     output wire [12:0] sd_a,
     output wire [1:0]  sd_dqm,
     output wire        sd_ras_n, sd_cas_n, sd_we_n,
-    inout  wire [15:0] sd_dq
+    inout  wire [15:0] sd_dq,
+    // bring-up debug bus: {system_reset_out, z80_wait, sdram_wait_n, busak_n, wr_n, rd_n, iorq_n, mreq_n, m1_n, d_bus[7:0], a_bus[15:0]}
+    output wire [32:0] dbg
 );
     // No config PIC / EEPROM on this board: the boot ROM was replaced (see README), tie the link off.
     wire eeprom_data_in = 1'b1;
@@ -79,6 +81,7 @@ module kg_osca_soc (
     wire        mreq_n_bus, iorq_n_bus, rd_n_bus, wr_n_bus;
     wire        busak_n, m1_n;
     wire        sdram_wait_n;
+    assign dbg = {system_reset_out, z80_wait, sdram_wait_n, busak_n, wr_n_bus, rd_n_bus, iorq_n_bus, mreq_n_bus, m1_n, d_bus, a_bus};
     wire [18:0] linecop_pc_o;
 
     osca_core core (

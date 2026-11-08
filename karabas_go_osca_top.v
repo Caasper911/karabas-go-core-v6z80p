@@ -97,6 +97,7 @@ module karabas_go_osca_top (
     wire kb_clk_pull, kb_dat_pull, kb_clk_line, kb_dat_line;
     wire sdc_clk, sdc_cs, sdc_din, sdc_pow, system_reset_out;
 
+    wire [32:0] dbg;
     kg_osca_soc soc (
         .clk_mem(clk96), .clk16_gen(clk16_gen), .clk16(clk16),
         .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(MD), .mwr_n(MWR_N), .mrd_n(MRD_N),
@@ -117,7 +118,8 @@ module karabas_go_osca_top (
         .expansion_pin_a(), .expansion_pin_b(),
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked), .sdram_init_done(sd_init),
-        .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ));
+        .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
+        .dbg(dbg));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
     wire clk96_n = ~clk96;
@@ -141,20 +143,38 @@ module karabas_go_osca_top (
     wire osca_run = run & ~load_s[1] & init_s[1];
     reg        ld_seen = 1'b0, ld_done = 1'b0, wr_seen = 1'b0;
     reg [15:0] ld_bytes = 16'd0;
-    reg [28:0] dbg_hold = 29'd0;
+    reg [31:0] dbg_hold = 32'd0;
     always @(posedge clk96) begin
         if (romloader_active) ld_seen <= 1'b1;
         if (ld_seen && !romloader_active) ld_done <= 1'b1;
         if (rom_wr) begin wr_seen <= 1'b1; if (ld_bytes != 16'hffff) ld_bytes <= ld_bytes + 16'd1; end
-        if (osca_run && !dbg_hold[28]) dbg_hold <= dbg_hold + 29'd1;
+        if (osca_run && !dbg_hold[31]) dbg_hold <= dbg_hold + 32'd1;
     end
     wire [7:0] dbg_r, dbg_g, dbg_b;  wire dbg_hs, dbg_vs;
     reg [26:0] hb27 = 27'd0;
     always @(posedge clk96) hb27 <= hb27 + 27'd1;
+    // CPU activity for the status screen (clk16 domain; dbg = {reset_out, z80_wait, sdram_wait_n, busak_n, wr_n, rd_n, iorq_n, mreq_n, m1_n, d[7:0], a[15:0]})
+    wire [15:0] c_a = dbg[15:0];   wire [7:0] c_d = dbg[23:16];
+    wire c_m1_n = dbg[24], c_mreq_n = dbg[25], c_iorq_n = dbg[26], c_rd_n = dbg[27], c_wr_n = dbg[28], c_busak_n = dbg[29], c_sdwait_n = dbg[30], c_zwait_n = dbg[31], c_rst_ok = dbg[32];
+    reg [15:0] pc_cur = 16'h0000, pc_snap = 16'h0000, pc_max = 16'h0000;  reg [7:0] op_cur = 8'h00, op_snap = 8'h00;
+    reg [7:0]  f2 = 8'h00;  reg dvs_q = 1'b1;
+    wire fetch = ~c_m1_n & ~c_mreq_n & ~c_rd_n;
+    always @(posedge clk16) begin
+        dvs_q <= dbg_vs;
+        if (fetch) begin pc_cur <= c_a; op_cur <= c_d; f2[7] <= 1'b1; if (c_a > pc_max) pc_max <= c_a; end
+        if (dvs_q && !dbg_vs) begin pc_snap <= pc_cur; op_snap <= op_cur; end        // one sample per frame
+        f2[0] <= ~(c_zwait_n & c_sdwait_n);
+        if (!c_sdwait_n) f2[1] <= 1'b1;
+        if (!c_zwait_n)  f2[2] <= 1'b1;
+        if (!c_busak_n)  f2[3] <= 1'b1;
+        if (!c_iorq_n && !c_wr_n) f2[4] <= 1'b1;
+        if (!c_iorq_n && !c_rd_n && c_m1_n) f2[5] <= 1'b1;
+        f2[6] <= c_rst_ok;
+    end
     kg_dbg_video u_dbg (.clk16(clk16),
-        .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}),
-        .bytes(ld_bytes), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
-    wire show_dbg = ~dbg_hold[28];
+        .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
+        .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
+    wire show_dbg = ~dbg_hold[31];   // status screen for ~22 s after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
     // give the DAC the inverted pixel clock (it samples in the middle of the pixel).  The FT812 is kept off the VGA bus.
     reg [7:0] vo_r = 8'h00, vo_g = 8'h00, vo_b = 8'h00;  reg vo_hs = 1'b1, vo_vs = 1'b1;
