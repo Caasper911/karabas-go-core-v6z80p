@@ -19,16 +19,19 @@ def main():
     ap.add_argument('--out', default=os.path.join(root, 'ise', 'work', 'osca.kg1'))
     ap.add_argument('--build', default=time.strftime('%y%m%d%H'))
     ap.add_argument('--order', type=int, default=0x30)
+    ap.add_argument('--id', default='osca')
+    ap.add_argument('--name', default='OSCA V6Z80P+')
+    ap.add_argument('--no-rom', action='store_true', help='no ROM block (bring-up tests)')
     a = ap.parse_args()
     bit = open(a.bit, 'rb').read()
-    rom = open(a.rom, 'rb').read()
+    rom = b'' if a.no_rom else open(a.rom, 'rb').read()
     assert bit[:16] == b'\xff' * 16 and b'\xaa\x99\x55\x66' in bit[:64], 'not a bitgen .bin'
-    roms = struct.pack('>II', len(rom), a.rom_addr) + rom
+    roms = b'' if a.no_rom else struct.pack('>II', len(rom), a.rom_addr) + rom
     h = bytearray(b'\xff' * 1024)
     h[0:0xba] = bytes(0xba)
     h[0:4] = b'kgo1'
-    h[4:36] = pad('osca', 32)
-    h[36:68] = pad('OSCA V6Z80P+', 32)
+    h[4:36] = pad(a.id, 32)
+    h[36:68] = pad(a.name, 32)
     h[68:76] = pad(a.build, 8)
     h[76] = 1                      # visible
     h[77] = a.order & 0xff         # order in the core browser
