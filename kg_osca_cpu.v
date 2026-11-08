@@ -19,6 +19,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 module kg_osca_cpu (
     input  wire        clk,
+    input  wire        clk_fast,     // 96 MHz: used to delay the falling edge of WR# (see below)
     input  wire        reset_n,      // system_reset_out
     input  wire        wait_n,       // z80_wait
     input  wire        ext_wait_n,   // extra wait (SDRAM not ready)
@@ -94,7 +95,14 @@ module kg_osca_cpu (
     assign mreq_n_bus = cpu_owns ? (cpu_mreq_q & mreq_hold_n)       : fpga_mreq_n;
     assign iorq_n_bus = cpu_owns ? (cpu_iorq_q & iorq_hold_n)       : fpga_iorq_n;
     assign rd_n_bus   = cpu_owns ? cpu_rd_q                         : fpga_rd_n;
-    assign wr_n_bus   = cpu_owns ? cpu_wr_q                         : fpga_wr_n;
+    // A real Z80 lowers WR# half a clock AFTER the address, MREQ# / IORQ# and the data are valid (and OSCA's registers, clocked by the write strobe, rely on their select /
+    // data being stable BEFORE that edge).  T80 changes everything at the same clock edge, and the falling-edge stage above keeps it that way, so on the FPGA the decode of the
+    // select (a few LUTs) races against the clock edge that comes through the inversion of cpu_write, and the registers stay unwritten.  The falling edge of WR# is delayed
+    // by two ticks of the 96 MHz clock (21 ns); the rising edge is not delayed.
+    reg wr_d1 = 1'b1, wr_d2 = 1'b1;
+    always @(posedge clk_fast) begin wr_d1 <= cpu_wr_q; wr_d2 <= wr_d1; end
+    wire cpu_wr_late = cpu_wr_q | wr_d2;
+    assign wr_n_bus   = cpu_owns ? cpu_wr_late                      : fpga_wr_n;
 
     // ---- data bus: FPGA (register reads) > CPU (writes) > RAM (reads, only while selected) > pull-down
     reg [7:0] do_q  = 8'h00;

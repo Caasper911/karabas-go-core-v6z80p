@@ -112,7 +112,7 @@ module karabas_go_osca_top (
         ld_wr_r   <= chk_run ? chk_wr : rom_wr;
     end
     wire [32:0] dbg;
-    wire [26:0] dbg2;  wire [29:0] dbg3;  wire [1:0] dbg4;  wire [15:0] pal_pdata;  reg [8:0] pal_probe = 9'd1;     // probe palette index 1 (FLOS writes FF FF there), alternating with index 200 (00 00)
+    wire [26:0] dbg2;  wire [29:0] dbg3;  wire [1:0] dbg4;  wire [31:0] dbg5;  wire [4:0] dbg6;  wire [19:0] dbg7;  wire [15:0] pal_pdata;  reg [8:0] pal_probe = 9'd1;     // probe palette index 1 (FLOS writes FF FF there), alternating with index 200 (00 00)
     reg [27:0] pal_alt = 28'd0;  reg [15:0] pal_v1 = 16'd0, pal_v2 = 16'd0;
     always @(posedge clk96) begin
         pal_alt <= pal_alt + 28'd1;
@@ -141,7 +141,7 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_hold[30]), .dbg_pdata(pal_pdata),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg5(dbg5), .dbg6(dbg6), .dbg7(dbg7), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_hold[30]), .dbg_pdata(pal_pdata),
         .v_en(vram_run), .v_addr(v_addr), .v_wr_n(v_wr_n), .v_wd(v_wd), .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -245,11 +245,30 @@ module karabas_go_osca_top (
         if (k_bg != 8'd0 && k_c3 != 16'hffff) k_c3 <= k_c3 + 16'd1;
         if (vq16 && !tv_sync) begin k_m2 <= k_c2; k_c2 <= 16'd0; k_m3 <= k_c3; k_c3 <= 16'd0; k_c0q <= k_c0[17:2]; k_c0 <= 18'd0; k_c1q <= k_c1[17:2]; k_c1 <= 18'd0; end
     end
+    // where does the CPU run into a NOP slide?  The last three non-NOP opcode fetches before the first run of 16 NOP fetches are kept (address and opcode)
+    reg [15:0] nn_pc0 = 16'd0, nn_pc1 = 16'd0, nn_pc2 = 16'd0;  reg [7:0] nn_op0 = 8'd0, nn_op1 = 8'd0, nn_op2 = 8'd0;
+    reg [15:0] sl_pc0 = 16'd0, sl_pc1 = 16'd0, sl_pc2 = 16'd0;  reg [7:0] sl_op0 = 8'd0, sl_op1 = 8'd0, sl_op2 = 8'd0;
+    reg [4:0]  nop_run = 5'd0;  reg slide_seen = 1'b0, fetch_q = 1'b0;  reg [15:0] f_a = 16'd0;  reg [7:0] f_d = 8'd0;
+    always @(posedge clk16) begin
+        fetch_q <= fetch;
+        if (fetch) begin f_a <= c_a; f_d <= c_d; end
+        if (!fetch && fetch_q) begin                           // one count per opcode fetch, at its end (the data are valid then)
+            if (f_d != 8'd0) begin
+                nn_pc2 <= nn_pc1; nn_pc1 <= nn_pc0; nn_pc0 <= f_a;  nn_op2 <= nn_op1; nn_op1 <= nn_op0; nn_op0 <= f_d;  nop_run <= 5'd0;
+            end else if (nop_run != 5'd31) begin
+                nop_run <= nop_run + 5'd1;
+                if (nop_run == 5'd15 && !slide_seen) begin
+                    slide_seen <= 1'b1;
+                    sl_pc0 <= nn_pc0; sl_pc1 <= nn_pc1; sl_pc2 <= nn_pc2; sl_op0 <= nn_op0; sl_op1 <= nn_op1; sl_op2 <= nn_op2;
+                end
+            end
+        end
+    end
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
-        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(vt_es), .first_ea(vt_er),
-        .m_hs(vt_act[63:48]), .m_lines(sv_err), .m_nb(m_nb), .m_col({sv_a0, sv_a1}),
+        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(dbg5[15:0]), .first_ea(dbg5[31:16]),
+        .m_hs(sl_pc0), .m_lines(sl_pc1), .m_nb(m_nb), .m_col({sl_op0, sl_op1}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

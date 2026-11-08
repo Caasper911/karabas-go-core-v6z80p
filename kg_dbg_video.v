@@ -14,9 +14,10 @@
 //              chosen SDR_CLK polarity (green = 1), chosen capture (green = 1)
 //   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
 //              green = no mismatch, red = 100 or more, yellow = a few
-//   rows 10..15: video RAM path (kg_vram_test through the wrapper, then a direct slow read by kg_sram_test): 10 (magenta) stream errors (the display-like read, expected 0), 11 (orange) rdata2
-//     errors (expected 0), 12 the first two bytes the stream read (expected 5A 5B), 13 errors of the direct slow read of 1024 addresses written through the wrapper (expected 0), 14 non-black
-//     output pixels per frame, 15 the first two bytes of the direct read (expected 5A 5B)
+//   row 10 (magenta) = {y_window[7:0], xstop[3:0], xstart[3:0]} of the video registers, row 11 (orange) = {yhws_a, xhws, live_palette, dualpf, ext_tile, tilemap, wide_border, interlace, hi_res, video_enable};
+//     simulation after FLOS has set up the video: row 10 = C838, row 11 = 5001.
+//   rows 12, 13, 15: the first run of 16 NOP fetches (a NOP slide) and what led to it: 12 = address of the last non-NOP instruction before the slide, 13 = the one before it,
+//     15 = {opcode of the last, opcode of the one before}; row 14: non-black output pixels per frame
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142

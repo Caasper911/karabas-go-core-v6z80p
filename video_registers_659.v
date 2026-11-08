@@ -1,5 +1,6 @@
 // generated from video_registers_659.sch
 module video_registers_659 (
+    output wire [3:0] dbg_ce,        // bring-up: write enables {y_window, xhws, vidctrl, rasthigh/window switch}
     input wire [7:0] cpu_databus,
     output wire tilemodeen_out,
     output wire cpu_sel_spr_ctrl,
@@ -165,4 +166,5 @@ module video_registers_659 (
     and2 XLXI_1092 (.I0(cpu_databus[7]), .I1(cpu_sel_palette_ctrl), .O(XLXN_3093));
     and2b1 XLXI_1101 (.I0(cpu_databus[7]), .I1(cpu_sel_palette_ctrl), .O(XLXN_3116));
 
+    assign dbg_ce = {XLXN_2182, cpu_sel_xhws, cpu_sel_vidctrl, XLXN_2317};
 endmodule

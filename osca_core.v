@@ -1,5 +1,8 @@
 // generated from osca_pal.sch
 module osca_core (
+    output wire [19:0] dbg_bus,    // bring-up: {cpu_write, cpu_address_bus[10:0], cpu_databus_in[7:0]} as the registers of the core see them
+    output wire [4:0] dbg_wce,    // bring-up: {cpu_write, vreg enables y_window / xhws / vidctrl / rasthigh}
+    output wire [31:0] dbg_vr,    // bring-up: video registers {yhws_a, xhws, live_palette, dualpf, ext_tile, tilemap, wide_border, interlace, hi_res, video_enable, xstop, xstart, y_window}
     input  wire        clk_fast,    // 96 MHz: the palette write strobe can be as short as 3 of its ticks (31 ns), shorter than a 16 MHz cycle
     input  wire        dbg_fixpal,  // bring-up: 1 = the colour outputs come from a fixed palette (colour = ~index) instead of the palette RAM
     input  wire [8:0]  dbg_paddr,  // bring-up: palette probe address, and the two palette bytes there {zero_red BRAM, green_blue BRAM}
@@ -276,6 +279,7 @@ module osca_core (
     wire [7:0] received_spi_byte;
     wire reset_req;
     wire rgb_oe;
+    wire [3:0] dbg_vrce;
     wire [7:0] dbg_pd0, dbg_pd1;
     wire right_border_stop;
     wire rom_selected;
@@ -971,7 +975,7 @@ module osca_core (
     buf_x XLXI_3631 (.I(port_1_outputs[3]), .O(video_irq_enable));
     buf_x XLXI_3632 (.I(port_1_outputs[6]), .O(serial_irq_enable));
     buf_x XLXI_1480 (.I(port_1_outputs[7]), .O(legacy_master_irq_en));
-    video_registers_659 XLXI_3640 (.allow_virq(legacy_video_irq_en), .cpuaccvideopage_out(cpus_vram_page[5:0]), .cpu_addr_in(cpu_address_bus[7:0]), .cpu_databus(cpu_databus_in[7:0]), .cpu_sel_spr_ctrl(cpu_sel_vreg_sprctrl), .cpu_sprite_base_addr(cpu_sprite_bank[4:0]), .cpu_wr_line(cpu_write), .dualpfen_out(dualpf_en), .global_video_enable(video_enable), .hi_res(hi_res_mode), .interlace(interlace_mode), .latchayhws_out(latchyhws_a), .latchbyhws_out(latchyhws_b), .linecop_addr(linecop_addr[18:0]), .linecount_in(line_count[8:0]), .live_palette(live_palette), .main_clock_in(clock_16mhz_dist), .new_scanline_in(init_gfx_line_build), .palette_wr_sel(palette_write_select), .pfablockbanksel_out(pfabanksel), .pfabufbmbufsel_out(pfabmbufsel), .pfbblockbanksel_out(pfbbanksel), .pfbbufsel_out(pfbbufsel), .playfield1req_in(playfield), .rasterirq_status_out(raster_line_match), .tilemodeen_out(tilemap_mode), .tile_extend(extended_tile_mode), .tile_pri_swap(switch_tile_priority), .vidreg_range_in(vregs_selected_200_3ff), .wideborder_out(wide_border), .xhws_out(xhws[3:0]), .xstartcoarse_out(xstart_coarse[3:0]), .xstopcoarse_out(xstop_coarse[3:0]), .yhwsavalue(yhws_a[3:0]), .yhwsbvalue(yhws_b[3:0]), .y_window_position(y_window_pos[7:0]));
+    video_registers_659 XLXI_3640 (.dbg_ce(dbg_vrce), .allow_virq(legacy_video_irq_en), .cpuaccvideopage_out(cpus_vram_page[5:0]), .cpu_addr_in(cpu_address_bus[7:0]), .cpu_databus(cpu_databus_in[7:0]), .cpu_sel_spr_ctrl(cpu_sel_vreg_sprctrl), .cpu_sprite_base_addr(cpu_sprite_bank[4:0]), .cpu_wr_line(cpu_write), .dualpfen_out(dualpf_en), .global_video_enable(video_enable), .hi_res(hi_res_mode), .interlace(interlace_mode), .latchayhws_out(latchyhws_a), .latchbyhws_out(latchyhws_b), .linecop_addr(linecop_addr[18:0]), .linecount_in(line_count[8:0]), .live_palette(live_palette), .main_clock_in(clock_16mhz_dist), .new_scanline_in(init_gfx_line_build), .palette_wr_sel(palette_write_select), .pfablockbanksel_out(pfabanksel), .pfabufbmbufsel_out(pfabmbufsel), .pfbblockbanksel_out(pfbbanksel), .pfbbufsel_out(pfbbufsel), .playfield1req_in(playfield), .rasterirq_status_out(raster_line_match), .tilemodeen_out(tilemap_mode), .tile_extend(extended_tile_mode), .tile_pri_swap(switch_tile_priority), .vidreg_range_in(vregs_selected_200_3ff), .wideborder_out(wide_border), .xhws_out(xhws[3:0]), .xstartcoarse_out(xstart_coarse[3:0]), .xstopcoarse_out(xstop_coarse[3:0]), .yhwsavalue(yhws_a[3:0]), .yhwsbvalue(yhws_b[3:0]), .y_window_position(y_window_pos[7:0]));
     and3 XLXI_3641 (.I0(legacy_master_irq_en), .I1(legacy_video_irq_en), .I2(raster_line_match), .O(XLXN_10856));
     spi_sch5 XLXI_2015 (.busy(spi_busy), .byte_received(received_spi_byte[7:0]), .byte_to_write(cpu_databus_in[7:0]), .clock_16mhz(clock_16mhz_dist), .cpu_wr(delayed_cpu_wr), .port_selected(port_a_selected), .speed_select(spi_speed), .spi_clock(spi_clock_out), .spi_input(XLXN_6347), .spi_out(XLXN_6506));
     ibuf XLXI_2288 (.I(sdc_dout), .O(XLXN_6347));
@@ -1077,4 +1081,7 @@ module osca_core (
     assign dbg_core = {cpu_databus_in[7:0], XLXN_2825, XLXN_7421, XLXN_2828, background_pixel, ywindow, xwindow, rgb_oe, palette_index};
     assign dbg_pal = {colour_select[8], palette_wr_addr[8]};
     assign dbg_pdata = {dbg_pd1, dbg_pd0};
+    assign dbg_vr = {yhws_a[3:0], xhws[3:0], live_palette, dualpf_en, extended_tile_mode, tilemap_mode, wide_border, interlace_mode, hi_res_mode, video_enable, xstop_coarse[3:0], xstart_coarse[3:0], y_window_pos[7:0]};
+    assign dbg_wce = {cpu_write, dbg_vrce};
+    assign dbg_bus = {cpu_write, cpu_address_bus[10:0], cpu_databus_in[7:0]};
 endmodule

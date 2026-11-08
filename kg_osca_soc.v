@@ -74,6 +74,9 @@ module kg_osca_soc (
     input  wire        dbg_fixpal,      // fixed palette test (see osca_core)
     input  wire [8:0]  dbg_paddr,       // palette probe (see osca_core)
     output wire [15:0] dbg_pdata,
+    output wire [19:0] dbg7,            // bus as seen by the core registers (see osca_core dbg_bus)
+    output wire [4:0]  dbg6,            // write enables of the video registers (see osca_core dbg_wce)
+    output wire [31:0] dbg5,            // video registers (see osca_core dbg_vr)
     output wire [1:0]  dbg4,            // palette pages (see osca_core dbg_pal)
     output wire [29:0] dbg3,            // OSCA core taps (see osca_core dbg_core)
     output wire [26:0] dbg2             // video RAM bus of the core: {vram_wr_n, vram_wdata[7:0], vram_rdata1[7:0] (display), vram_rdata2[7:0] (blitter / CPU)}
@@ -104,7 +107,7 @@ module kg_osca_soc (
 
     osca_core core (
         .clk_fast(clk_mem),
-        .dbg_core(dbg3), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata), .dbg_fixpal(dbg_fixpal),
+        .dbg_core(dbg3), .dbg_vr(dbg5), .dbg_wce(dbg6), .dbg_bus(dbg7), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata), .dbg_fixpal(dbg_fixpal),
         .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .vram_addr_out(vram_addr_out),
         .spr_wdata(spr_wdata), .spr_wdata_oe(spr_wdata_oe), .spr_rdata(spr_rdata),
         .spr_ram_wr(spr_ram_wr), .spr_ram_rd(spr_ram_rd), .spr_addrbus(spr_addrbus),
@@ -139,7 +142,7 @@ module kg_osca_soc (
         .expansion_pin_a(expansion_pin_a), .expansion_pin_b(expansion_pin_b));
 
     kg_osca_cpu cpu (
-        .clk(clk16), .reset_n(system_reset_out), .wait_n(z80_wait), .ext_wait_n(sdram_wait_n), .int_n(z80_int), .nmi_n(z80_nmi),
+        .clk(clk16), .clk_fast(clk_mem), .reset_n(system_reset_out), .wait_n(z80_wait), .ext_wait_n(sdram_wait_n), .int_n(z80_int), .nmi_n(z80_nmi),
         .busrq_n(z80_busreq), .busak_n(busak_n), .m1_n(m1_n),
         .fpga_a(z80_addr_o), .fpga_mreq_n(z80_mreq_o), .fpga_iorq_n(z80_ioreq_o),
         .fpga_rd_n(z80_read_o), .fpga_wr_n(z80_write_o),

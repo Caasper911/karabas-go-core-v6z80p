@@ -55,13 +55,14 @@ module kg_sdram_check #(
     // ---- state
     localparam S_IDLE = 5'd0, S_SETUP = 5'd1, S_RI0 = 5'd2, S_RI1 = 5'd3, S_RI2 = 5'd4, S_RI3 = 5'd5,
                S_W0 = 5'd6, S_W1 = 5'd7, S_W2 = 5'd8, S_W3 = 5'd9, S_W4 = 5'd10,
-               S_R0 = 5'd11, S_R1 = 5'd12, S_R2 = 5'd13, S_R3 = 5'd14, S_END = 5'd15, S_SEL = 5'd16, S_FIN = 5'd17, S_SEL1 = 5'd18, S_SEL2 = 5'd19, S_SEL3 = 5'd20;
+               S_R0 = 5'd11, S_R1 = 5'd12, S_R2 = 5'd13, S_R3 = 5'd14, S_END = 5'd15, S_SEL = 5'd16, S_FIN = 5'd17, S_SEL1 = 5'd18, S_SEL2 = 5'd19, S_SEL3 = 5'd20, S_C0 = 5'd21, S_C1 = 5'd22, S_C2 = 5'd23, S_C3 = 5'd24, S_C4 = 5'd25, S_CD = 5'd26;
     reg [4:0]  st = S_IDLE;
     reg [3:0]  sq = 4'd0;                    // step of the sequence
     reg [15:0] idx = 16'd0;                  // address (sequential) / current address (strided)
     reg [15:0] cnt = 16'd0;                  // addresses done in this pass
     reg        pass = 1'b0;                  // read: 0 sequential, 1 strided
     reg [15:0] tmo = 16'd0;
+    reg [18:0] caddr = 19'd0;  reg clr_pending = 1'b0;   // clearing of the whole 512 KB before the final image write (the board's RAM keeps the previous run's contents)
     reg [15:0] errc = 16'd0;
     reg        have_first = 1'b0;
     reg [15:0] e0 = 16'd0, e1 = 16'd0, e6 = 16'd0, e7 = 16'd0;   // errors of the cells with equal write / read polarity
@@ -111,7 +112,8 @@ module kg_sdram_check #(
             tmo <= tmo + 16'd1;
             if (tmo == 16'd100) begin
                 tmo <= 16'd0; idx <= 16'd0; cnt <= 16'd0; pass <= 1'b0; errc <= 16'd0; addr_o <= 19'd0;
-                st <= is_write ? S_W0 : S_R0;
+                caddr <= 19'd0;
+                st <= is_write ? (clr_pending ? S_C0 : S_W0) : S_R0;
             end
         end
 
@@ -127,6 +129,20 @@ module kg_sdram_check #(
                 else begin idx <= idx + 16'd1; st <= S_W0; end
             end
         end
+
+        // ---- clear the whole RAM (zeros), then write the image again (S_CD)
+        S_C0: begin addr_o <= caddr; data_o <= 8'd0; tmo <= 16'd0; st <= S_C1; end
+        S_C1: begin tmo <= tmo + 16'd1; if (tmo == 16'd3) st <= S_C2; end
+        S_C2: begin wr_o <= 1'b1; st <= S_C3; end
+        S_C3: begin wr_o <= 1'b0; tmo <= 16'd0; st <= S_C4; end
+        S_C4: begin
+            tmo <= tmo + 16'd1;
+            if (tmo == 16'd20) begin
+                if (caddr == 19'h7ffff) st <= S_CD;
+                else begin caddr <= caddr + 19'd1; st <= S_C0; end
+            end
+        end
+        S_CD: begin clr_pending <= 1'b0; idx <= 16'd0; cnt <= 16'd0; addr_o <= 19'd0; tmo <= 16'd0; st <= S_W0; end
 
         // ---- read back and compare
         S_R0: begin addr_o <= {3'd0, idx}; tmo <= 16'd0; st <= S_R1; end
@@ -180,7 +196,7 @@ module kg_sdram_check #(
         S_SEL3: begin                                           // ties: polarity 1 with the fabric capture first (the variant verified in the simulation regression)
             if (e6 <= m_r) begin best <= 2'd2; is_write <= 1'b1; new_pol <= 1'b1; new_cap <= 1'b0; end
             else           begin best <= b_r;  is_write <= 1'b1; new_pol <= b_r[1]; new_cap <= b_r[0]; end
-            sq <= 4'd10; st <= S_SETUP;
+            sq <= 4'd10; clr_pending <= 1'b1; st <= S_SETUP;
         end
 
         default: ;                                              // S_FIN
