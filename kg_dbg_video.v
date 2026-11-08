@@ -15,7 +15,7 @@
 //   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
 //              green = no mismatch, red = 100 or more, yellow = a few
 //   rows 10..15 measured inside the running core: 10 (magenta) writes of the palette RAM so far (rising edges of its clock with the write enabled); 11 (orange) of them with a non-zero data byte;
-//     12 HS period (508 = 0x1FC); 13 rgb_oe high cycles per frame / 4; 14 non-black output pixels per frame; 15 cycles per frame / 4 with displayed palette page 1
+//     12 HS period (508 = 0x1FC); 13 (blue-grey) executed 4K pages of the address space (bit 15 = page F000, left; sticky); 14 non-black output pixels per frame; 15 (yellow) executed 1K blocks of 0000-3FFF (sticky)
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142

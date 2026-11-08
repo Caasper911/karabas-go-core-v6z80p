@@ -194,10 +194,12 @@ module karabas_go_osca_top (
     wire c_m1_n = dbg[24], c_mreq_n = dbg[25], c_iorq_n = dbg[26], c_rd_n = dbg[27], c_wr_n = dbg[28], c_busak_n = dbg[29], c_sdwait_n = dbg[30], c_zwait_n = dbg[31], c_rst_ok = dbg[32];
     reg [15:0] pc_cur = 16'h0000, pc_snap = 16'h0000, pc_max = 16'h0000;  reg [7:0] op_cur = 8'h00, op_snap = 8'h00;
     reg [7:0]  f2 = 8'h00;  reg dvs_q = 1'b1;
+    reg [15:0] pcmap_hi = 16'd0, pcmap_lo = 16'd0;   // sticky: opcode fetch seen in 4K page A[15:12] / in 1K block A[13:10] of 0000-3FFF
     wire fetch = ~c_m1_n & ~c_mreq_n & ~c_rd_n;
     always @(posedge clk16) begin
         dvs_q <= dbg_vs;
-        if (fetch) begin pc_cur <= c_a; op_cur <= c_d; f2[7] <= 1'b1; if (c_a > pc_max) pc_max <= c_a; end
+        if (fetch) begin pc_cur <= c_a; op_cur <= c_d; f2[7] <= 1'b1; if (c_a > pc_max) pc_max <= c_a;
+            pcmap_hi[c_a[15:12]] <= 1'b1;  if (c_a[15:14] == 2'b00) pcmap_lo[c_a[13:10]] <= 1'b1; end
         if (dvs_q && !dbg_vs) begin pc_snap <= pc_cur; op_snap <= op_cur; end        // one sample per frame
         f2[0] <= ~(c_zwait_n & c_sdwait_n);
         if (!c_sdwait_n) f2[1] <= 1'b1;
@@ -228,7 +230,7 @@ module karabas_go_osca_top (
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(k_m4), .first_ea(k_m5),
-        .m_hs(m_hs), .m_lines(k_c0q), .m_nb(m_nb), .m_col(k_c1q),
+        .m_hs(m_hs), .m_lines(pcmap_hi), .m_nb(m_nb), .m_col(pcmap_lo),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
