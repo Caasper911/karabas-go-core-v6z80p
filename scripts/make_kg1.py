@@ -40,6 +40,7 @@ def main():
     h[80:84] = struct.pack('>I', len(bit))
     h[84:88] = struct.pack('>I', len(roms))
     h[88] = 0                      # no RTC
+    h[512:1024] = bytes(512)       # switches (256) and LED matrix settings (256) as make_core writes them for a core without OSD items
     h[185] = 0                     # default SPI frequency
     out = bytes(h) + bit + roms + b'\x00'   # trailing 0 = number of OSD items
     open(a.out, 'wb').write(out)

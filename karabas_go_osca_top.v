@@ -19,6 +19,8 @@ module karabas_go_osca_top (
     // video / audio
     output wire [7:0]  VGA_R, VGA_G, VGA_B,
     output wire        VGA_HS, VGA_VS,
+    output wire        V_CLK,                // pixel clock of the VGA DAC
+    output wire        FT_OE_N, FT_SPI_CS_N, FT_SPI_SCK,   // FT812 video: FT_OE_N = 1 keeps it off the VGA bus
     output wire        DAC_LRCK, DAC_DAT, DAC_BCK, DAC_MUTE,
     // SD card
     output wire        SD_CS_N, SD_DI, SD_CLK,
@@ -149,15 +151,24 @@ module karabas_go_osca_top (
     wire [7:0] dbg_r, dbg_g, dbg_b;  wire dbg_hs, dbg_vs;
     reg [26:0] hb27 = 27'd0;
     always @(posedge clk96) hb27 <= hb27 + 27'd1;
-    kg_dbg_video u_dbg (.clk96(clk96),
+    kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}),
         .bytes(ld_bytes), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[28];
-    assign VGA_R  = show_dbg ? dbg_r  : osca_r;
-    assign VGA_G  = show_dbg ? dbg_g  : osca_g;
-    assign VGA_B  = show_dbg ? dbg_b  : osca_b;
-    assign VGA_HS = show_dbg ? dbg_hs : horizontal_sync;
-    assign VGA_VS = show_dbg ? dbg_vs : tv_sync;
+    // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
+    // give the DAC the inverted pixel clock (it samples in the middle of the pixel).  The FT812 is kept off the VGA bus.
+    reg [7:0] vo_r = 8'h00, vo_g = 8'h00, vo_b = 8'h00;  reg vo_hs = 1'b1, vo_vs = 1'b1;
+    always @(posedge clk16) begin
+        vo_r  <= show_dbg ? dbg_r  : osca_r;
+        vo_g  <= show_dbg ? dbg_g  : osca_g;
+        vo_b  <= show_dbg ? dbg_b  : osca_b;
+        vo_hs <= show_dbg ? dbg_hs : horizontal_sync;
+        vo_vs <= show_dbg ? dbg_vs : tv_sync;
+    end
+    assign VGA_R = vo_r;  assign VGA_G = vo_g;  assign VGA_B = vo_b;  assign VGA_HS = vo_hs;  assign VGA_VS = vo_vs;
+    wire clk16_n = ~clk16;
+    ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) u_vclk (.Q(V_CLK), .C0(clk16), .C1(clk16_n), .CE(1'b1), .D0(1'b0), .D1(1'b1), .R(1'b0), .S(1'b0));
+    assign FT_OE_N = 1'b1;  assign FT_SPI_CS_N = 1'b1;  assign FT_SPI_SCK = 1'b0;
 
     // audio
     wire [15:0] pcm_l, pcm_r;

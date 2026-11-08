@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 // kg_dbg_video - bring-up status screen, independent of OSCA and of the memory wrapper's clk16.
-// Runs on clk96 with a divide-by-6 enable (16 MHz pixel rate), standard VGA 640x480@60 style timing:
+// Runs on the 16 MHz pixel clock, standard VGA 640x480@60 style timing:
 //   508 clocks per line (31.496 kHz), 524 lines (60.1 Hz), HS low 60 clocks, VS low 2 lines, both active low (same as OSCA's VGA mode).
 // Picture: 8 flag blocks (green = true, red = false), a progress bar of the boot-image bytes received (white tick = expected end),
 // and 8 colour bars (checks the RGB wiring).  Flags (left to right):
@@ -9,26 +9,19 @@
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142
 ) (
-    input  wire       clk96,
+    input  wire       clk16,
     input  wire [7:0] flags,
     input  wire [15:0] bytes,      // bytes received so far (saturating counter)
     output reg  [7:0] r, g, b,
     output reg        hs, vs
 );
-    reg [2:0] div = 3'd0;
-    wire ce = (div == 3'd5);
     reg [8:0] px = 9'd0;
     reg [9:0] ln = 10'd0;
-    reg [26:0] hb = 27'd0;
-    always @(posedge clk96) begin
-        div <= ce ? 3'd0 : div + 3'd1;
-        hb  <= hb + 27'd1;
-        if (ce) begin
-            if (px == 9'd507) begin
-                px <= 9'd0;
-                ln <= (ln == 10'd523) ? 10'd0 : ln + 10'd1;
-            end else px <= px + 9'd1;
-        end
+    always @(posedge clk16) begin
+        if (px == 9'd507) begin
+            px <= 9'd0;
+            ln <= (ln == 10'd523) ? 10'd0 : ln + 10'd1;
+        end else px <= px + 9'd1;
     end
     wire [7:0] f = {flags[7], flags[6], flags[5], flags[4], flags[3], flags[2], flags[1], flags[0]};
     // active area: px 120..503 (384 wide, 8 blocks of 48), lines 40..519
@@ -40,7 +33,7 @@ module kg_dbg_video #(
     wire gap = (x == 9'd0) || (x == 9'd48) || (x == 9'd96) || (x == 9'd144) || (x == 9'd192) || (x == 9'd240) || (x == 9'd288) || (x == 9'd336);
     wire [8:0] bar_w = bytes[15:6];                         // 0..313 for 20142 bytes (1 pixel = 64 bytes)
     wire [8:0] bar_end = IMG_BYTES[15:6];
-    always @(posedge clk96) if (ce) begin
+    always @(posedge clk16) begin
         hs <= ~(px < 9'd60);
         vs <= ~(ln < 10'd2);
         r <= 8'h00; g <= 8'h00; b <= 8'h00;

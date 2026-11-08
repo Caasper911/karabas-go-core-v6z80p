@@ -156,3 +156,11 @@ TIMESPEC "TS_loader_mdo" = FROM "GRP_LOADER" TO "GRP_MDO" TIG;
 # the loader changes address/data/ld_active at SPI rate (many 96 MHz clocks apart): effectively multi-cycle into the SDRAM controller
 INST "soc/sdram/*"      TNM = "GRP_SDRAM";
 TIMESPEC "TS_loader_sdram" = FROM "GRP_LOADER" TO "GRP_SDRAM" TIG;
+
+# VGA DAC pixel clock and FT812 off the VGA bus (pins as in the NanoMig / Profi Karabas Go cores)
+NET "V_CLK"        LOC="F6" | IOSTANDARD = LVCMOS33 | DRIVE = 8 | SLEW = FAST;
+NET "FT_OE_N"      LOC="G6" | IOSTANDARD = LVCMOS33;
+NET "FT_SPI_CS_N"  LOC="A6" | IOSTANDARD = LVCMOS33;
+NET "FT_SPI_SCK"   LOC="A5" | IOSTANDARD = LVCMOS33;
+
+INST "vo_*" IOB = TRUE;

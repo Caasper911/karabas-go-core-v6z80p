@@ -5,7 +5,9 @@
 module kg_bringup_top #(parameter USE_DCM = 0) (
     input  wire       CLK_50MHZ,
     output reg  [7:0] VGA_R, VGA_G, VGA_B,
-    output reg        VGA_HS, VGA_VS
+    output reg        VGA_HS, VGA_VS,
+    output reg        V_CLK,                 // pixel clock of the VGA DAC (registered, rises in the middle of the pixel)
+    output wire       FT_OE_N, FT_SPI_CS_N, FT_SPI_SCK   // FT812 off the VGA bus
 );
     wire clk, locked;
     generate if (USE_DCM) begin : g_dcm
@@ -22,6 +24,8 @@ module kg_bringup_top #(parameter USE_DCM = 0) (
     reg [1:0] div = 2'd0;
     wire ce = USE_DCM ? (div == 2'd3) : div[0];
     reg [9:0] px = 10'd0, ln = 10'd0;
+    assign FT_OE_N = 1'b1;  assign FT_SPI_CS_N = 1'b1;  assign FT_SPI_SCK = 1'b0;
+    always @(posedge clk) V_CLK <= USE_DCM ? (div == 2'd1 || div == 2'd2) : ~div[0];
     always @(posedge clk) begin
         div <= div + 2'd1;
         if (ce) begin
