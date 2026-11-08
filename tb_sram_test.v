@@ -12,7 +12,7 @@ module tb_sram_test;
     always @(posedge wr_n[0]) m0[ea] <= bus[7:0];
     always @(posedge wr_n[1]) m1[ea] <= (stuck >= 0) ? (bus[15:8] & ~(8'd1 << stuck)) : bus[15:8];
     kg_sram_test dut (.clk(clk), .go(go), .run(run), .ma(ma), .md(md), .oe(oe), .wr_n(wr_n), .rd_n(rd_n), .md_i(bus), .done(done),
-                      .dmask0(dm0), .dmask1(dm1), .amask(amask), .alias0(alias0));
+                      .dmask0(dm0), .dmask1(dm1), .amask(amask), .alias0(alias0), .vgo(1'b0), .vdone(), .verr(), .vact0(), .vact1());
     initial begin
         if ($value$plusargs("alias=%d", alias)) ; if ($value$plusargs("stuck=%d", stuck)) ;
         #100 go = 1; wait (done); #100;

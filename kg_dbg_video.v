@@ -14,8 +14,9 @@
 //              chosen SDR_CLK polarity (green = 1), chosen capture (green = 1)
 //   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
 //              green = no mismatch, red = 100 or more, yellow = a few
-//   rows 10..15 measured inside the running core: 10 (magenta) writes of the palette RAM so far (rising edges of its clock with the write enabled); 11 (orange) of them with a non-zero data byte;
-//     12 HS period (508 = 0x1FC); 13 width of the last palette write strobe in clk96 ticks; 14 non-black output pixels per frame; 15 minimum width of the palette write strobe in clk96 ticks
+//   rows 10..15: video RAM path (kg_vram_test through the wrapper, then a direct slow read by kg_sram_test): 10 (magenta) stream errors (the display-like read: rdata1 one cycle after the
+//     address), 11 (orange) rdata2 errors (CPU / blitter read after a 6-cycle hold), 12 the first two bytes of the stream {read 0, read 1} (expected 5A 5B), 13 errors of the DIRECT slow read
+//     of 1024 addresses the wrapper has written (0 = the writes through the wrapper arrive), 14 non-black output pixels per frame, 15 the first two bytes of the direct read {5A, 5B expected}
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142

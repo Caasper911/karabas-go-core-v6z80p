@@ -19,10 +19,15 @@ module kg_sram_test (
     output reg  [7:0]  dmask0 = 8'd0,
     output reg  [7:0]  dmask1 = 8'd0,
     output reg  [20:0] amask = 21'd0,
-    output reg         alias0 = 1'b0         // address 0 itself did not read back
+    output reg         alias0 = 1'b0,        // address 0 itself did not read back
+    // second job: after the video RAM test (which wrote a pattern through the wrapper) read it back directly with the slow cycles
+    input  wire        vgo,
+    output reg         vdone = 1'b0,
+    output reg  [15:0] verr = 16'd0,
+    output reg  [7:0]  vact0 = 8'd0, vact1 = 8'd0
 );
     reg running = 1'b0;
-    assign run = (go & ~done) | running;
+    assign run = (go & ~done) | running | (vgo & ~vdone);
 
     // ---------------- one SRAM access (op 0 = write, op 1 = read)
     reg        req_t = 1'b0, ack_t = 1'b0, op = 1'b0, olane = 1'b0;      // request = toggle of req_t, acknowledged by copying it to ack_t
@@ -54,11 +59,15 @@ module kg_sram_test (
     // ---------------- test sequence
     localparam T_IDLE = 5'd0, T_DW = 5'd1, T_DWW = 5'd2, T_DR = 5'd3, T_DRW = 5'd4, T_DCMP = 5'd5,
                T_A0W = 5'd6, T_A0WW = 5'd7, T_AKW = 5'd8, T_AKWW = 5'd9, T_A0R = 5'd10, T_A0RW = 5'd11, T_A0C = 5'd12,
-               T_AKR = 5'd13, T_AKRW = 5'd14, T_AKC = 5'd15, T_FIN = 5'd16, T_AZR = 5'd17, T_AZRW = 5'd18, T_AZC = 5'd19, T_AK0 = 5'd20, T_AK0W = 5'd21;
+               T_AKR = 5'd13, T_AKRW = 5'd14, T_AKC = 5'd15, T_FIN = 5'd16, T_AZR = 5'd17, T_AZRW = 5'd18, T_AZC = 5'd19, T_AK0 = 5'd20, T_AK0W = 5'd21, T_Z0 = 5'd22, T_Z0W = 5'd23, T_VW = 5'd24, T_V0 = 5'd25, T_V0W = 5'd26, T_VC = 5'd27, T_FIN2 = 5'd28;
     reg [4:0] ts = T_IDLE;
     reg       lane = 1'b0;
     reg [4:0] di = 5'd0;                     // data pattern index 0..17
     reg [4:0] k = 5'd0;                      // address bit
+    reg [9:0] vi = 10'd0;  reg [1:0] vn = 2'd0;
+    wire [20:0] vaddr = (vi < 10'd512) ? {12'd0, vi[8:0]} : (21'h40000 + {12'd0, vi[8:0]});     // 512 addresses at 0.. and 512 at 40000.. (written through the wrapper by kg_vram_test)
+    wire [7:0] vexp = vaddr[7:0] ^ vaddr[15:8] ^ 8'h5a;
+    reg [20:0] zaddr = 21'd0;                // zero fill of the video RAM (0..7FFFF) and the sprite RAM (100000..11FFFF) after the tests: the RAM keeps the previous run's contents
     wire [7:0] dpat = (di < 5'd8) ? (8'd1 << di[2:0]) : (di < 5'd16) ? ~(8'd1 << di[2:0]) : (di == 5'd16) ? 8'h00 : 8'hff;
     localparam [20:0] ADATA_ADDR = 21'h01234;
 
@@ -98,9 +107,24 @@ module kg_sram_test (
         T_AKRW: if (!req && !obusy && ost == 4'd0) ts <= T_AKC;
         T_AKC:  begin
                     if (rres != (8'hc0 | {3'd0, k})) amask <= amask | (21'd1 << k);
-                    if (k == 5'd20) ts <= T_FIN; else begin k <= k + 5'd1; ts <= T_AKR; end
+                    if (k == 5'd20) begin zaddr <= 21'd0; ts <= T_Z0; end else begin k <= k + 5'd1; ts <= T_AKR; end
                 end
-        T_FIN:  begin done <= 1'b1; running <= 1'b0; end
+        T_Z0:   begin op <= 1'b0; olane <= 1'b0; oaddr <= zaddr; odata <= 8'h00; req_t <= ~req_t; ts <= T_Z0W; end
+        T_Z0W:  if (!req && !obusy && ost == 4'd0) begin
+                    if (zaddr == 21'h7ffff) begin zaddr <= 21'h100000; ts <= T_Z0; end
+                    else if (zaddr == 21'h11ffff) ts <= T_FIN;
+                    else begin zaddr <= zaddr + 21'd1; ts <= T_Z0; end
+                end
+        T_FIN:  begin done <= 1'b1; running <= 1'b0; ts <= T_VW; end
+        T_VW:   if (vgo && !vdone) begin vi <= 10'd0; vn <= 2'd0; ts <= T_V0; end
+        T_V0:   begin op <= 1'b1; olane <= 1'b0; oaddr <= vaddr; req_t <= ~req_t; ts <= T_V0W; end
+        T_V0W:  if (!req && !obusy && ost == 4'd0) ts <= T_VC;
+        T_VC:   begin
+                    if (rres != vexp) verr <= (verr == 16'hffff) ? verr : verr + 16'd1;
+                    if (vn == 2'd0) begin vact0 <= rres; vn <= 2'd1; end else if (vn == 2'd1) begin vact1 <= rres; vn <= 2'd2; end
+                    if (vi == 10'd1023) begin vdone <= 1'b1; ts <= T_FIN2; end else begin vi <= vi + 10'd1; ts <= T_V0; end
+                end
+        T_FIN2: ;
         default: ;
         endcase
     end

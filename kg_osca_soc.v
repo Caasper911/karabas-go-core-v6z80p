@@ -21,6 +21,10 @@ module kg_osca_soc (
     input  wire [15:0] md_i,
     output wire [1:0]  mwr_n,
     output wire [1:0]  mrd_n,
+    input  wire        v_en,                // bring-up video RAM self test (kg_vram_test) drives the wrapper's video inputs while 1
+    input  wire [18:0] v_addr,
+    input  wire        v_wr_n,
+    input  wire [7:0]  v_wd,
     input  wire        t_en,                // bring-up SRAM self test (kg_sram_test) drives the SRAM pins while 1
     input  wire [20:0] t_ma,
     input  wire [15:0] t_md,
@@ -146,7 +150,7 @@ module kg_osca_soc (
 
     kg_osca_mem mem (
         .clk_mem(clk_mem), .clk16(clk16_gen),
-        .vram_addr(vram_addr_out), .vram_wr_n(vram_wr), .vram_wdata(vram_wdata),
+        .vram_addr(v_en ? v_addr : vram_addr_out), .vram_wr_n(v_en ? v_wr_n : vram_wr), .vram_wdata(v_en ? v_wd : vram_wdata),
         .vram_rdata1(vram_rdata), .vram_rdata2(vram_rdata2),
         .spr_addr(spr_addrbus),    .spr_wr_n(spr_ram_wr), .spr_wdata(spr_wdata), .spr_rdata(spr_rdata),
         .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(md_i), .mwr_n(mwr_n), .mrd_n(mrd_n),

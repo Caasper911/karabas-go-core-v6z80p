@@ -51,7 +51,7 @@ module tb_boot;
         .ps2_kb_clock_out(kb_clk_pull), .ps2_kb_data_out(kb_dat_pull),
         .sdc_dout(1'b1), .serial_rx_pin(1'b1), .joystick_data_in(1'b1),
         .ld_active(ld_active), .ld_addr(ld_addr), .ld_data(ld_data), .ld_wr(ld_wr),
-        .sdram_reset(sd_rst), .sdram_cap_late(1'b0), .dbg_paddr(9'd1), .dbg_fixpal(1'b0), .t_en(1'b0), .t_ma(21'd0), .t_md(16'd0), .t_oe(1'b0), .t_wr_n(2'b11), .t_rd_n(2'b11), .sdram_init_done(sd_init), .sd_ba(sd_ba), .sd_a(sd_a), .sd_dqm(sd_dqm), .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_dq(sd_dq),
+        .sdram_reset(sd_rst), .sdram_cap_late(1'b0), .dbg_paddr(9'd1), .dbg_fixpal(1'b0), .v_en(1'b0), .v_addr(19'd0), .v_wr_n(1'b1), .v_wd(8'd0), .t_en(1'b0), .t_ma(21'd0), .t_md(16'd0), .t_oe(1'b0), .t_wr_n(2'b11), .t_rd_n(2'b11), .sdram_init_done(sd_init), .sd_ba(sd_ba), .sd_a(sd_a), .sd_dqm(sd_dqm), .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_dq(sd_dq),
         .jumper_nmi(1'b1), .jumper_reset(~ld_active), .jumper_vga(1'b0),
         .expansion_pin_a(exp_a), .expansion_pin_b(exp_b), .system_reset_out(sys_reset));
 

@@ -641,8 +641,18 @@ module osca_core (
     // fixed palette for the bring-up test: same pipeline position as the palette RAM output (registered, cleared outside rgb_oe like its RSTB)
     reg [7:0] fx_gb = 8'd0, fx_red = 8'd0;
     always @(posedge clock_16mhz_dist) begin
-        fx_gb  <= rgb_oe ? ~colour_select[7:0] : 8'h00;
-        fx_red <= rgb_oe ? {4'b0000, ~colour_select[7:4]} : 8'h00;
+        // index mod 8: grey, red, green, blue, yellow, magenta, cyan, white (as {red, green, blue} nibbles)
+        case (colour_select[2:0])
+            3'd0: begin fx_red <= 8'h04; fx_gb <= 8'h44; end
+            3'd1: begin fx_red <= 8'h0f; fx_gb <= 8'h00; end
+            3'd2: begin fx_red <= 8'h00; fx_gb <= 8'hf0; end
+            3'd3: begin fx_red <= 8'h00; fx_gb <= 8'h0f; end
+            3'd4: begin fx_red <= 8'h0f; fx_gb <= 8'hf0; end
+            3'd5: begin fx_red <= 8'h0f; fx_gb <= 8'h0f; end
+            3'd6: begin fx_red <= 8'h00; fx_gb <= 8'hff; end
+            default: begin fx_red <= 8'h0f; fx_gb <= 8'hff; end
+        endcase
+        if (!rgb_oe) begin fx_red <= 8'h00; fx_gb <= 8'h00; end
     end
     wire [7:0] gb_ram, zr_ram;
     assign green_blue = dbg_fixpal ? fx_gb  : gb_ram;
