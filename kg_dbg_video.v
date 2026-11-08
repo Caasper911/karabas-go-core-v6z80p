@@ -14,8 +14,8 @@
 //              chosen SDR_CLK polarity (green = 1), chosen capture (green = 1)
 //   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
 //              green = no mismatch, red = 100 or more, yellow = a few
-//   rows 10..15 measured inside the running core, per frame (clk16 cycles): 10 (magenta) palette write strobe cycles so far; 11 (orange) of them with a non-zero data byte; 12 HS period (508 = 0x1FC);
-//     13 palette index non-zero; 14 non-black output pixels; 15 background pixel non-zero
+//   rows 10..15 measured inside the running core: 10 (magenta) palette write strobe cycles into page 1 so far; 11 (orange) into page 0 so far;
+//     12 HS period (508 = 0x1FC); 13 rgb_oe high cycles per frame / 4; 14 non-black output pixels per frame; 15 cycles per frame / 4 with displayed palette page 1
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142

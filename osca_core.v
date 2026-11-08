@@ -1,5 +1,6 @@
 // generated from osca_pal.sch
 module osca_core (
+    output wire [1:0] dbg_pal,     // bring-up taps: {colour_select[8] (displayed palette page), palette_write_select (written palette page)}
     output wire [29:0] dbg_core,   // bring-up taps: {cpu_databus_in[7:0], palette clk (XLXN_2825), palette enables XLXN_7421 / XLXN_2828, background_pixel[7:0], ywindow, xwindow, rgb_oe, palette_index[7:0]}
     output wire [7:0] vram_wdata,
     output wire vram_wdata_oe,
@@ -1035,4 +1036,5 @@ module osca_core (
 
     assign linecop_pc_o = linecop_pc[18:0];
     assign dbg_core = {cpu_databus_in[7:0], XLXN_2825, XLXN_7421, XLXN_2828, background_pixel, ywindow, xwindow, rgb_oe, palette_index};
+    assign dbg_pal = {colour_select[8], palette_wr_addr[8]};
 endmodule

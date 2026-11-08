@@ -729,7 +729,7 @@ module ramb4_s8_s8 #(parameter [255:0] INIT_00 = 256'h0, parameter [255:0] INIT_
     if (RSTA) DOA <= 8'h00; else if (WEA) begin mem[ADDRA] <= DIA; DOA <= DIA; end else DOA <= mem[ADDRA];
   end
   always @(posedge CLKB) if (ENB) begin
-    if (RSTB) DOB <= 8'h00; else if (WEB) begin mem[ADDRB] <= DIB; DOB <= DIB; end else DOB <= mem[ADDRB];
+    if (RSTB) DOB <= 8'h00; else DOB <= mem[ADDRB];                    // port B only reads (WEB is tied low where this module is used: the palette); a second writing clock would need a clock-merging LUT
   end
 endmodule
 

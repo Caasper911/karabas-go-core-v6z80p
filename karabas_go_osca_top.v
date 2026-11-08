@@ -110,7 +110,7 @@ module karabas_go_osca_top (
         ld_wr_r   <= chk_run ? chk_wr : rom_wr;
     end
     wire [32:0] dbg;
-    wire [26:0] dbg2;  wire [29:0] dbg3;
+    wire [26:0] dbg2;  wire [29:0] dbg3;  wire [1:0] dbg4;
     wire [7:0] chk_rdata;  wire chk_rdvalid;
     kg_osca_soc soc (
         .clk_mem(clk96), .clk16_gen(clk16_gen), .clk16(clk16),
@@ -133,7 +133,7 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4),
         .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -211,19 +211,21 @@ module karabas_go_osca_top (
     wire [7:0] k_pal = dbg3[7:0];  wire k_oe = dbg3[8], k_xw = dbg3[9], k_yw = dbg3[10];  wire [7:0] k_bg = dbg3[18:11];
     wire [7:0] k_cd = dbg3[29:22];  wire k_pclk = dbg3[21], k_pen1 = dbg3[20], k_pen0 = dbg3[19];
     wire k_pw = (k_pen0 | k_pen1) & ~k_pclk;          // palette write strobe (the palette RAM is clocked by the inverted cpu_write)
-    reg [15:0] k_m4 = 16'd0, k_m5 = 16'd0, k_c0 = 16'd0, k_c1 = 16'd0, k_c2 = 16'd0, k_c3 = 16'd0, k_m0 = 16'd0, k_m1 = 16'd0, k_m2 = 16'd0, k_m3 = 16'd0;
+    reg [15:0] k_m4 = 16'd0, k_m5 = 16'd0;  reg [17:0] k_c0 = 18'd0, k_c1 = 18'd0;  reg [15:0] k_c0q = 16'd0, k_c1q = 16'd0,  k_c2 = 16'd0, k_c3 = 16'd0, k_m0 = 16'd0, k_m1 = 16'd0, k_m2 = 16'd0, k_m3 = 16'd0;
     always @(posedge clk16) begin
-        if (k_pw && k_m4 != 16'hffff) k_m4 <= k_m4 + 16'd1;
-        if (k_pw && k_cd != 8'd0 && k_m5 != 16'hffff) k_m5 <= k_m5 + 16'd1;
+        if (k_pw && dbg4[0] && k_m4 != 16'hffff) k_m4 <= k_m4 + 16'd1;          // palette write strobe cycles into page 1
+        if (k_pw && !dbg4[0] && k_m5 != 16'hffff) k_m5 <= k_m5 + 16'd1;         // ... into page 0
+        if (k_oe) k_c0 <= k_c0 + 18'd1;                                         // rgb_oe high cycles per frame
+        if (dbg4[1]) k_c1 <= k_c1 + 18'd1;                                      // cycles per frame in which the displayed palette page is 1
         if (k_pal != 8'd0 && k_c2 != 16'hffff) k_c2 <= k_c2 + 16'd1;
         if (k_bg != 8'd0 && k_c3 != 16'hffff) k_c3 <= k_c3 + 16'd1;
-        if (vq16 && !tv_sync) begin k_m2 <= k_c2; k_c2 <= 16'd0; k_m3 <= k_c3; k_c3 <= 16'd0; end
+        if (vq16 && !tv_sync) begin k_m2 <= k_c2; k_c2 <= 16'd0; k_m3 <= k_c3; k_c3 <= 16'd0; k_c0q <= k_c0[17:2]; k_c0 <= 18'd0; k_c1q <= k_c1[17:2]; k_c1 <= 18'd0; end
     end
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(k_m4), .first_ea(k_m5),
-        .m_hs(m_hs), .m_lines(k_m2), .m_nb(m_nb), .m_col(k_m3),
+        .m_hs(m_hs), .m_lines(k_c0q), .m_nb(m_nb), .m_col(k_c1q),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
