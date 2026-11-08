@@ -110,6 +110,7 @@ module karabas_go_osca_top (
         ld_wr_r   <= chk_run ? chk_wr : rom_wr;
     end
     wire [32:0] dbg;
+    wire [26:0] dbg2;
     wire [7:0] chk_rdata;  wire chk_rdvalid;
     kg_osca_soc soc (
         .clk_mem(clk96), .clk16_gen(clk16_gen), .clk16(clk16),
@@ -132,7 +133,7 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2),
         .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -206,11 +207,21 @@ module karabas_go_osca_top (
         if (!c_iorq_n && !c_rd_n && c_m1_n) f2[5] <= 1'b1;
         f2[6] <= c_rst_ok;
     end
+    // ---- what passes the video RAM wrapper in the running core (clk16 domain): write cycles (all / with non-zero data), non-zero bytes of the display fetch and of the CPU / blitter read per frame
+    wire        v_wr_n = dbg2[26];  wire [7:0] v_wd = dbg2[25:18], v_rd1 = dbg2[17:10], v_rd2 = dbg2[9:2];
+    reg [15:0] v_wcnt = 16'd0, v_wnz = 16'd0, v_r1 = 16'd0, v_r2 = 16'd0, v_r1c = 16'd0, v_r2c = 16'd0;
+    always @(posedge clk16) begin
+        if (!v_wr_n && v_wcnt != 16'hffff) v_wcnt <= v_wcnt + 16'd1;
+        if (!v_wr_n && v_wd != 8'd0 && v_wnz != 16'hffff) v_wnz <= v_wnz + 16'd1;
+        if (v_rd1 != 8'd0 && v_r1c != 16'hffff) v_r1c <= v_r1c + 16'd1;
+        if (v_rd2 != 8'd0 && v_r2c != 16'hffff) v_r2c <= v_r2c + 16'd1;
+        if (vq16 && !tv_sync) begin v_r1 <= v_r1c; v_r1c <= 16'd0; v_r2 <= v_r2c; v_r2c <= 16'd0; end
+    end
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
-        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr({s_dm1, s_dm0}), .first_ea(s_amask[15:0]),
-        .m_hs(m_hs), .m_lines({s_amask[20:16], 3'd0, sram_done, sram_alias0, 6'd0}), .m_nb(m_nb), .m_col({colv, 4'd0}),
+        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(v_wcnt), .first_ea(v_wnz),
+        .m_hs(m_hs), .m_lines(v_r1), .m_nb(m_nb), .m_col(v_r2),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

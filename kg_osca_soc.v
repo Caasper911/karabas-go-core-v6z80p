@@ -66,7 +66,8 @@ module kg_osca_soc (
     // bring-up debug bus: {system_reset_out, z80_wait, sdram_wait_n, busak_n, wr_n, rd_n, iorq_n, mreq_n, m1_n, d_bus[7:0], a_bus[15:0]}
     output wire [32:0] dbg,
     output wire [7:0]  chk_rdata,      // system RAM read data / valid (self test of the SDRAM through the loader port)
-    output wire        chk_rdvalid
+    output wire        chk_rdvalid,
+    output wire [26:0] dbg2             // video RAM bus of the core: {vram_wr_n, vram_wdata[7:0], vram_rdata1[7:0] (display), vram_rdata2[7:0] (blitter / CPU)}
 );
     // No config PIC / EEPROM on this board: the boot ROM was replaced (see README), tie the link off.
     wire eeprom_data_in = 1'b1;
@@ -168,4 +169,5 @@ module kg_osca_soc (
     assign sdram_wait_n = ~(busak_n & ~ld_active & ~system_ram_cs & ~rd_n_bus & ~sdram_rd_valid);
     assign chk_rdata = sys_rdata;
     assign chk_rdvalid = sdram_rd_valid;
+    assign dbg2 = {vram_wr, vram_wdata, vram_rdata, vram_rdata2};
 endmodule
