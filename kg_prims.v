@@ -706,7 +706,7 @@ endmodule
 
 module ramb4_s8_s8 #(parameter [255:0] INIT_00 = 256'h0, parameter [255:0] INIT_01 = 256'h0, parameter [255:0] INIT_02 = 256'h0, parameter [255:0] INIT_03 = 256'h0, parameter [255:0] INIT_04 = 256'h0, parameter [255:0] INIT_05 = 256'h0, parameter [255:0] INIT_06 = 256'h0, parameter [255:0] INIT_07 = 256'h0, parameter [255:0] INIT_08 = 256'h0, parameter [255:0] INIT_09 = 256'h0, parameter [255:0] INIT_0A = 256'h0, parameter [255:0] INIT_0B = 256'h0, parameter [255:0] INIT_0C = 256'h0, parameter [255:0] INIT_0D = 256'h0, parameter [255:0] INIT_0E = 256'h0, parameter [255:0] INIT_0F = 256'h0) (input [8:0] ADDRA, input CLKA, input [7:0] DIA, input ENA, input RSTA, input WEA, output reg [7:0] DOA,
                    input [8:0] ADDRB, input CLKB, input [7:0] DIB, input ENB, input RSTB, input WEB, output reg [7:0] DOB);
-  reg [7:0] mem [0:511];
+  (* ram_style = "distributed" *) reg [7:0] mem [0:511];   // the palette: a Block RAM clocked by the gated ~cpu_write did not work on the board
   integer ii; initial begin
     for (ii=0; ii<32; ii=ii+1) mem[0+ii] = INIT_00[8*ii +: 8];
     for (ii=0; ii<32; ii=ii+1) mem[32+ii] = INIT_01[8*ii +: 8];
