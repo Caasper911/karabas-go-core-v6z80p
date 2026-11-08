@@ -53,7 +53,7 @@ module karabas_go_osca_top (
     wire run = lock_sr[3];
     wire        romloader_active;
     reg [31:0] dbg_hold = 32'd0;                       // counts while OSCA runs: bit 29 = status screen / OSCA picture, bit 30 = fixed palette test
-    wire        vram_run, vram_done;  wire [18:0] v_addr;  wire v_wr_n;  wire [7:0] v_wd;  wire [15:0] vt_es, vt_er, sv_err;  wire [7:0] vt_a0, vt_a1, sv_a0, sv_a1;  wire sv_done;
+    wire        vram_run, vram_done;  wire [18:0] v_addr;  wire v_wr_n;  wire [7:0] v_wd;  wire [15:0] vt_es, vt_er, sv_err;  wire [63:0] vt_act;  wire [7:0] sv_a0, sv_a1;  wire sv_done;
     wire        sram_run, sram_done, sram_alias0;  wire [20:0] s_ma, s_amask;  wire [15:0] s_md;  wire s_oe;  wire [1:0] s_wr_n, s_rd_n;  wire [7:0] s_dm0, s_dm1;
     wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
     // hold OSCA in reset while the MCU writes the boot image (romloader_active is a clk96 signal)
@@ -181,8 +181,8 @@ module karabas_go_osca_top (
     kg_sram_test u_sram (.clk(clk96), .go(chk_done), .run(sram_run), .ma(s_ma), .md(s_md), .oe(s_oe), .wr_n(s_wr_n), .rd_n(s_rd_n), .md_i(MD),
         .done(sram_done), .dmask0(s_dm0), .dmask1(s_dm1), .amask(s_amask), .alias0(sram_alias0), .vgo(vram_done), .vdone(sv_done), .verr(sv_err), .vact0(sv_a0), .vact1(sv_a1));
     // video RAM self test (wrapper + SRAM at the real speed, the display-like stream): after the SRAM test, still in reset
-    kg_vram_test u_vram (.clk16(clk16), .go(sram_done), .run(vram_run), .addr(v_addr), .wr_n(v_wr_n), .wdata(v_wd), .rdata1(dbg2[17:10]), .rdata2(dbg2[9:2]),
-        .done(vram_done), .err_s(vt_es), .err_r(vt_er), .act0(vt_a0), .act1(vt_a1));
+    kg_vram_test u_vram (.clk16(clk16), .go(sram_done), .run(vram_run), .addr(v_addr), .wr_n(v_wr_n), .wdata(v_wd), .rdata1(dbg2[15:8]), .rdata2(dbg2[7:0]),
+        .done(vram_done), .err_s(vt_es), .err_r(vt_er), .act(vt_act));
     reg chk_seen = 1'b0;  always @(posedge clk96) if (chk_run) chk_seen <= 1'b1;
     wire [7:0] dbg_r, dbg_g, dbg_b;  wire dbg_hs, dbg_vs;
     // ---- measurements on OSCA's own video (clk16 domain): HS period, lines per frame, non-black pixels per frame, colour bits ever set
@@ -249,7 +249,7 @@ module karabas_go_osca_top (
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(vt_es), .first_ea(vt_er),
-        .m_hs({vt_a0, vt_a1}), .m_lines(sv_err), .m_nb(m_nb), .m_col({sv_a0, sv_a1}),
+        .m_hs(vt_act[63:48]), .m_lines(sv_err), .m_nb(m_nb), .m_col({sv_a0, sv_a1}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

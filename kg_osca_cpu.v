@@ -78,7 +78,19 @@ module kg_osca_cpu (
     reg mreq_hold_n = 1'b1, iorq_hold_n = 1'b1;
     always @(posedge clk) begin mreq_hold_n <= cpu_mreq_q; iorq_hold_n <= cpu_iorq_q; end
 
-    assign a_bus      = cpu_owns ? cpu_a_q                          : fpga_a;
+    // A real Z80 keeps the address valid for a while AFTER WR# goes inactive.  Many OSCA registers (video registers, sound, blitter, palette...) are clocked by the
+    // inverted write strobe, i.e. they capture at the END of the write, and their select is decoded from the address.  Here the strobe and the (next cycle's) address
+    // change at the same falling-edge register stage, and the clock of such a register arrives a few ns later than the address on the FPGA: it sees the NEW address.
+    // So the address of the write is held for half a clock after the write has ended.
+    reg [15:0] a_wr_q = 16'h0000;          // address during the write (sampled while WR# is low)
+    reg        we_set = 1'b0, we_clr = 1'b0;
+    always @(posedge clk) begin
+        if (!cpu_wr_q) a_wr_q <= cpu_a_q;
+        we_clr <= we_set;
+    end
+    always @(negedge clk) if (!cpu_wr_q && cpu_wr_n) we_set <= ~we_set;     // the write has just ended (cpu_wr_q is the old value, cpu_wr_n the new one)
+    wire wr_end_hold = (we_set != we_clr);
+    assign a_bus      = cpu_owns ? (wr_end_hold ? a_wr_q : cpu_a_q)  : fpga_a;
     assign mreq_n_bus = cpu_owns ? (cpu_mreq_q & mreq_hold_n)       : fpga_mreq_n;
     assign iorq_n_bus = cpu_owns ? (cpu_iorq_q & iorq_hold_n)       : fpga_iorq_n;
     assign rd_n_bus   = cpu_owns ? cpu_rd_q                         : fpga_rd_n;

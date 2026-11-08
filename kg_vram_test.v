@@ -18,7 +18,7 @@ module kg_vram_test (
     output reg         done = 1'b0,
     output reg  [15:0] err_s = 16'd0,
     output reg  [15:0] err_r = 16'd0,
-    output reg  [7:0]  act0 = 8'd0, act1 = 8'd0
+    output reg  [63:0] act = 64'd0                          // the first 8 bytes the stream read, first byte in [63:56] (expected 5A 5B 58 59 5E 5F 5C 5D)
 );
     reg running = 1'b0;
     assign run = (go & ~done) | running;
@@ -35,20 +35,19 @@ module kg_vram_test (
     reg [7:0]  e1 = 8'd0;
     reg        v1 = 1'b0;
     reg [2:0]  w = 3'd0;
-    reg [1:0]  ncmp = 2'd0;
+    reg [3:0]  ncmp = 4'd0;
     always @(posedge clk16) begin
         case (st)
         S_IDLE: if (go && !done) begin running <= 1'b1; i <= 15'd0; st <= S_W0; end
         S_W0: begin addr <= amap(i); wdata <= fd(amap(i)); wr_n <= 1'b0; w <= 3'd0; st <= S_W1; end
         S_W1: begin w <= w + 3'd1; if (w == 3'd1) begin wr_n <= 1'b1; w <= 3'd0; st <= S_W2; end end
         S_W2: begin w <= w + 3'd1; if (w == 3'd1) st <= S_W3; end
-        S_W3: begin if (i == NW - 15'd1) begin i <= 15'd0; v1 <= 1'b0; ncmp <= 2'd0; st <= S_ST; end else begin i <= i + 15'd1; st <= S_W0; end end
+        S_W3: begin if (i == NW - 15'd1) begin i <= 15'd0; v1 <= 1'b0; ncmp <= 4'd0; st <= S_ST; end else begin i <= i + 15'd1; st <= S_W0; end end
         S_ST: begin
             addr <= amap(i); e1 <= fd(amap(i)); v1 <= 1'b1;
             if (v1) begin
                 if (rdata1 !== e1) err_s <= (err_s == 16'hffff) ? err_s : err_s + 16'd1;
-                if (ncmp == 2'd0) begin act0 <= rdata1; ncmp <= 2'd1; end
-                else if (ncmp == 2'd1) begin act1 <= rdata1; ncmp <= 2'd2; end
+                if (ncmp < 4'd8) begin act <= {act[55:0], rdata1}; ncmp <= ncmp + 4'd1; end
             end
             if (i == NW - 15'd1) begin i <= 15'd0; st <= S_ST_END; w <= 3'd0; end else i <= i + 15'd1;
         end
