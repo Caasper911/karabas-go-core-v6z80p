@@ -211,10 +211,13 @@ module karabas_go_osca_top (
     wire [7:0] k_pal = dbg3[7:0];  wire k_oe = dbg3[8], k_xw = dbg3[9], k_yw = dbg3[10];  wire [7:0] k_bg = dbg3[18:11];
     wire [7:0] k_cd = dbg3[29:22];  wire k_pclk = dbg3[21], k_pen1 = dbg3[20], k_pen0 = dbg3[19];
     wire k_pw = (k_pen0 | k_pen1) & ~k_pclk;          // palette write strobe (the palette RAM is clocked by the inverted cpu_write)
-    reg [15:0] k_m4 = 16'd0, k_m5 = 16'd0;  reg [17:0] k_c0 = 18'd0, k_c1 = 18'd0;  reg [15:0] k_c0q = 16'd0, k_c1q = 16'd0,  k_c2 = 16'd0, k_c3 = 16'd0, k_m0 = 16'd0, k_m1 = 16'd0, k_m2 = 16'd0, k_m3 = 16'd0;
+    reg pclk_q = 1'b0;  reg [15:0] k_m4 = 16'd0, k_m5 = 16'd0;  reg [17:0] k_c0 = 18'd0, k_c1 = 18'd0;  reg [15:0] k_c0q = 16'd0, k_c1q = 16'd0,  k_c2 = 16'd0, k_c3 = 16'd0, k_m0 = 16'd0, k_m1 = 16'd0, k_m2 = 16'd0, k_m3 = 16'd0;
     always @(posedge clk16) begin
-        if (k_pw && dbg4[0] && k_m4 != 16'hffff) k_m4 <= k_m4 + 16'd1;          // palette write strobe cycles into page 1
-        if (k_pw && !dbg4[0] && k_m5 != 16'hffff) k_m5 <= k_m5 + 16'd1;         // ... into page 0
+        pclk_q <= k_pclk;
+        if (k_pclk && !pclk_q && (k_pen0 | k_pen1)) begin                      // rising edge of the palette RAM clock with the write enabled = one write of the palette
+            if (k_m4 != 16'hffff) k_m4 <= k_m4 + 16'd1;
+            if (k_cd != 8'd0 && k_m5 != 16'hffff) k_m5 <= k_m5 + 16'd1;
+        end
         if (k_oe) k_c0 <= k_c0 + 18'd1;                                         // rgb_oe high cycles per frame
         if (dbg4[1]) k_c1 <= k_c1 + 18'd1;                                      // cycles per frame in which the displayed palette page is 1
         if (k_pal != 8'd0 && k_c2 != 16'hffff) k_c2 <= k_c2 + 16'd1;
