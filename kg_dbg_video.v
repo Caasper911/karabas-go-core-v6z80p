@@ -14,9 +14,8 @@
 //              chosen SDR_CLK polarity (green = 1), chosen capture (green = 1)
 //   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
 //              green = no mismatch, red = 100 or more, yellow = a few
-//   row 10 (magenta) : video RAM write cycles seen on the wrapper's input so far;  row 11 (orange): of them with non-zero data
-//   row 12 : HS period in clk16 (508 = 0x1FC) measured on OSCA's own video
-//   row 13 : non-zero bytes per frame in the display fetch (vram_rdata1);  row 14 : non-black pixels per frame;  row 15 : non-zero bytes per frame in the blitter / CPU read (vram_rdata2)
+//   rows 10..15 measured inside the running core, per frame (clk16 cycles): 10 (magenta) palette write strobe cycles so far; 11 (orange) of them with a non-zero data byte; 12 HS period (508 = 0x1FC);
+//     13 palette index non-zero; 14 non-black output pixels; 15 background pixel non-zero
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142

@@ -110,7 +110,7 @@ module karabas_go_osca_top (
         ld_wr_r   <= chk_run ? chk_wr : rom_wr;
     end
     wire [32:0] dbg;
-    wire [26:0] dbg2;
+    wire [26:0] dbg2;  wire [29:0] dbg3;
     wire [7:0] chk_rdata;  wire chk_rdvalid;
     kg_osca_soc soc (
         .clk_mem(clk96), .clk16_gen(clk16_gen), .clk16(clk16),
@@ -133,7 +133,7 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3),
         .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -207,21 +207,23 @@ module karabas_go_osca_top (
         if (!c_iorq_n && !c_rd_n && c_m1_n) f2[5] <= 1'b1;
         f2[6] <= c_rst_ok;
     end
-    // ---- what passes the video RAM wrapper in the running core (clk16 domain): write cycles (all / with non-zero data), non-zero bytes of the display fetch and of the CPU / blitter read per frame
-    wire        v_wr_n = dbg2[26];  wire [7:0] v_wd = dbg2[25:18], v_rd1 = dbg2[17:10], v_rd2 = dbg2[9:2];
-    reg [15:0] v_wcnt = 16'd0, v_wnz = 16'd0, v_r1 = 16'd0, v_r2 = 16'd0, v_r1c = 16'd0, v_r2c = 16'd0;
+    // ---- inside the running core (clk16 domain), per frame: rgb_oe high, x/y window both high, palette index non-zero, background pixel non-zero
+    wire [7:0] k_pal = dbg3[7:0];  wire k_oe = dbg3[8], k_xw = dbg3[9], k_yw = dbg3[10];  wire [7:0] k_bg = dbg3[18:11];
+    wire [7:0] k_cd = dbg3[29:22];  wire k_pclk = dbg3[21], k_pen1 = dbg3[20], k_pen0 = dbg3[19];
+    wire k_pw = (k_pen0 | k_pen1) & ~k_pclk;          // palette write strobe (the palette RAM is clocked by the inverted cpu_write)
+    reg [15:0] k_m4 = 16'd0, k_m5 = 16'd0, k_c0 = 16'd0, k_c1 = 16'd0, k_c2 = 16'd0, k_c3 = 16'd0, k_m0 = 16'd0, k_m1 = 16'd0, k_m2 = 16'd0, k_m3 = 16'd0;
     always @(posedge clk16) begin
-        if (!v_wr_n && v_wcnt != 16'hffff) v_wcnt <= v_wcnt + 16'd1;
-        if (!v_wr_n && v_wd != 8'd0 && v_wnz != 16'hffff) v_wnz <= v_wnz + 16'd1;
-        if (v_rd1 != 8'd0 && v_r1c != 16'hffff) v_r1c <= v_r1c + 16'd1;
-        if (v_rd2 != 8'd0 && v_r2c != 16'hffff) v_r2c <= v_r2c + 16'd1;
-        if (vq16 && !tv_sync) begin v_r1 <= v_r1c; v_r1c <= 16'd0; v_r2 <= v_r2c; v_r2c <= 16'd0; end
+        if (k_pw && k_m4 != 16'hffff) k_m4 <= k_m4 + 16'd1;
+        if (k_pw && k_cd != 8'd0 && k_m5 != 16'hffff) k_m5 <= k_m5 + 16'd1;
+        if (k_pal != 8'd0 && k_c2 != 16'hffff) k_c2 <= k_c2 + 16'd1;
+        if (k_bg != 8'd0 && k_c3 != 16'hffff) k_c3 <= k_c3 + 16'd1;
+        if (vq16 && !tv_sync) begin k_m2 <= k_c2; k_c2 <= 16'd0; k_m3 <= k_c3; k_c3 <= 16'd0; end
     end
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
-        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(v_wcnt), .first_ea(v_wnz),
-        .m_hs(m_hs), .m_lines(v_r1), .m_nb(m_nb), .m_col(v_r2),
+        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(k_m4), .first_ea(k_m5),
+        .m_hs(m_hs), .m_lines(k_m2), .m_nb(m_nb), .m_col(k_m3),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
