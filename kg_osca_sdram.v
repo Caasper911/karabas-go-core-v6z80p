@@ -31,18 +31,19 @@ module kg_osca_sdram #(
     input  wire        wr_n,
     input  wire [7:0]  wdata,
     input  wire        block_refresh,
+    input  wire        cap_late,           // 0: read data taken from the pins at clock 6 (access = 7 clocks); 1: from the IOB flip-flop at clock 7 (access = 8 clocks)
     input  wire [18:0] hint_addr,          // address the FPGA will read next (line copper PC + 2): read ahead in the background
     output wire [7:0]  rdata,
     output wire        rd_valid,
     output wire        wr_pending,
     output wire        init_done,
 
-    output reg  [1:0]  sd_ba    = 2'b00,
-    output reg  [12:0] sd_a     = 13'd0,
-    output reg  [1:0]  sd_dqm   = 2'b11,
-    output reg         sd_ras_n = 1'b1,
-    output reg         sd_cas_n = 1'b1,
-    output reg         sd_we_n  = 1'b1,
+    (* IOB = "TRUE" *) output reg  [1:0]  sd_ba    = 2'b00,
+    (* IOB = "TRUE" *) output reg  [12:0] sd_a     = 13'd0,
+    (* IOB = "TRUE" *) output reg  [1:0]  sd_dqm   = 2'b11,
+    (* IOB = "TRUE" *) output reg         sd_ras_n = 1'b1,
+    (* IOB = "TRUE" *) output reg         sd_cas_n = 1'b1,
+    (* IOB = "TRUE" *) output reg         sd_we_n  = 1'b1,
     inout  wire [15:0] sd_dq
 );
     localparam CMD_NOP = 3'b111, CMD_ACTIVE = 3'b011, CMD_READ = 3'b101, CMD_WRITE = 3'b100,
@@ -102,8 +103,13 @@ module kg_osca_sdram #(
     reg [17:0] acc_wa = 18'd0;
     reg [7:0]  acc_data = 8'd0;
     reg        acc_odd = 1'b0;
-    reg [15:0] dq_out = 16'd0;
-    reg        dq_oe = 1'b0;
+    (* IOB = "TRUE" *) reg [15:0] dq_out = 16'd0;
+    (* IOB = "TRUE" *) reg        dq_oe = 1'b0;
+    // the data pins are also sampled by a flip-flop in the IOB every clock (nothing between the pad and its D input)
+    (* IOB = "TRUE" *) reg [15:0] dq_iob = 16'd0;
+    always @(posedge clk) dq_iob <= sd_dq;
+    wire [15:0] cap_word = cap_late ? dq_iob : sd_dq;
+    wire        acc_last = cap_late ? (step == 3'd7) : (step == 3'd6);
     assign sd_dq = dq_oe ? dq_out : 16'bzzzzzzzzzzzzzzzz;
 
     task cmd; input [2:0] c; begin {sd_ras_n, sd_cas_n, sd_we_n} <= c; end endtask
@@ -183,11 +189,11 @@ module kg_osca_sdram #(
                     dq_oe <= acc_wr;
                 end
                 3'd3: sd_dqm <= 2'b11;
-                3'd6: begin
-                    if (!acc_wr && !acc_hint) begin rd_word <= sd_dq; rd_wa <= acc_wa; rd_ok <= 1'b1; end
+                default: if (acc_last) begin
+                    if (!acc_wr && !acc_hint) begin rd_word <= cap_word; rd_wa <= acc_wa; rd_ok <= 1'b1; end
                     else if (!acc_wr && acc_hint) begin
-                        if (acc_hidx == 1'b0) begin e0_word <= sd_dq; e0_cwa <= acc_wa; e0_ok <= 1'b1; end
-                        else                  begin e1_word <= sd_dq; e1_cwa <= acc_wa; e1_ok <= 1'b1; end
+                        if (acc_hidx == 1'b0) begin e0_word <= cap_word; e0_cwa <= acc_wa; e0_ok <= 1'b1; end
+                        else                  begin e1_word <= cap_word; e1_cwa <= acc_wa; e1_ok <= 1'b1; end
                     end
                     else begin                                           // keep all cached words coherent with the write
                         if (rd_ok && rd_wa == acc_wa) begin if (acc_odd) rd_word[15:8] <= acc_data; else rd_word[7:0] <= acc_data; end
@@ -196,7 +202,6 @@ module kg_osca_sdram #(
                     end
                     state <= ST_IDLE;
                 end
-                default: ;
             endcase
         end
 

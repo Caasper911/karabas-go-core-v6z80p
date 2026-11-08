@@ -168,3 +168,8 @@ INST "vo_*" IOB = TRUE;
 INST "u_chk/*"         TNM = "GRP_CHK";
 TIMESPEC "TS_chk_sdram" = FROM "GRP_CHK" TO "GRP_SDRAM" TIG;
 INST "ld_seen" TNM = "GRP_CHK";   # static after the loader has started (set once)
+# same false paths into any register of the SRAM wrapper (the placement changes which of them is critical)
+INST "soc/mem/*"        TNM = "GRP_MEM";
+TIMESPEC "TS_sysrd_mem"  = FROM FFS THRU "TH_SYSRD" TO "GRP_MEM" TIG;
+TIMESPEC "TS_loader_mem" = FROM "GRP_LOADER" TO "GRP_MEM" TIG;
+TIMESPEC "TS_chk_mem"    = FROM "GRP_CHK" TO "GRP_MEM" TIG;

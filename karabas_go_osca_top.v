@@ -52,7 +52,7 @@ module karabas_go_osca_top (
     always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked};
     wire run = lock_sr[3];
     wire        romloader_active;
-    wire chk_run, chk_done, chk_p1, chk_p2, chk_tmo;  wire [18:0] chk_addr;  wire [15:0] chk_e1, chk_e2, chk_fa;  wire [7:0] chk_fe, chk_fact;
+    wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
     // hold OSCA in reset while the MCU writes the boot image (romloader_active is a clk96 signal)
     reg [1:0] load_s = 2'b00;
     always @(posedge clk16) load_s <= {load_s[0], romloader_active | chk_run};
@@ -66,8 +66,10 @@ module karabas_go_osca_top (
     wire [31:0] rom_addr;
     wire [7:0]  rom_data;
     wire sd_init;
+    reg  sd_init_ever = 1'b0;                       // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
+    always @(posedge clk96) if (sd_init) sd_init_ever <= 1'b1;
     kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
-        .CLK(clk96), .N_RESET(dcm_locked & sd_init),   // the loader must not start before the SDRAM is initialised
+        .CLK(clk96), .N_RESET(dcm_locked & sd_init_ever),   // the loader must not start before the SDRAM is initialised
         .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
         .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(1'b1), .MCU_BURST_READY(),
         .MS_X(), .MS_Y(), .MS_B(unused_ms_b), .MS_Z(), .MS_UPD(),
@@ -115,17 +117,17 @@ module karabas_go_osca_top (
         .sdc_clk(sdc_clk), .sdc_cs(sdc_cs), .sdc_din(sdc_din), .sdc_pow(sdc_pow), .sdc_dout(SD_DO),
         .serial_tx_pin(), .serial_rx_pin(1'b1),
         .joystick_clock_out(), .joystick_data_in(1'b1),        // TODO: serjoy2 protocol
-        .ld_active(romloader_active | chk_run), .ld_addr(chk_run ? {13'd0, chk_addr} : rom_addr), .ld_data(rom_data), .ld_wr(rom_wr & ~chk_run),   // boot image from the MCU
+        .ld_active(romloader_active | chk_run), .ld_addr(chk_run ? {13'd0, chk_addr} : rom_addr), .ld_data(chk_run ? chk_data : rom_data), .ld_wr(chk_run ? chk_wr : rom_wr),   // boot image from the MCU
         .jumper_nmi(1'b1), .jumper_reset(run & ~load_s[1] & init_s[1]), .jumper_vga(1'b0),   // 0 = VGA video mode
         .expansion_pin_a(), .expansion_pin_b(),
         .system_reset_out(system_reset_out),
-        .sdram_reset(~dcm_locked), .sdram_init_done(sd_init),
+        .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
         .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
     wire clk96_n = ~clk96;
-    ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) u_sdrclk (.Q(SDR_CLK), .C0(clk96), .C1(clk96_n), .CE(1'b1), .D0(1'b1), .D1(1'b0), .R(1'b0), .S(1'b0));
+    ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) u_sdrclk (.Q(SDR_CLK), .C0(clk96), .C1(clk96_n), .CE(1'b1), .D0(~chk_pol), .D1(chk_pol), .R(1'b0), .S(1'b0));
 
     // SRAM pads
     assign MA = ma;
@@ -150,12 +152,13 @@ module karabas_go_osca_top (
         if (romloader_active) ld_seen <= 1'b1;
         if (ld_seen && !romloader_active) ld_done <= 1'b1;
         if (rom_wr) begin wr_seen <= 1'b1; if (ld_bytes != 16'hffff) ld_bytes <= ld_bytes + 16'd1; end
-        if (osca_run && !dbg_hold[31]) dbg_hold <= dbg_hold + 32'd1;
+        if (osca_run && !dbg_hold[30]) dbg_hold <= dbg_hold + 32'd1;
     end
     // SDRAM self test: read the loaded image back through the loader port (the core is still in reset), compare with a copy in BRAM
-    kg_sdram_check u_chk (.clk(clk96), .wr_i(rom_wr), .addr_i(rom_addr[14:0]), .data_i(rom_data), .go(ld_seen & ~romloader_active), .run(chk_run), .addr_o(chk_addr),
-        .rd_valid(chk_rdvalid), .rdata(chk_rdata), .done(chk_done), .pass1_ok(chk_p1), .pass2_ok(chk_p2), .timeout(chk_tmo), .err1(chk_e1), .err2(chk_e2),
-        .first_addr(chk_fa), .first_exp(chk_fe), .first_act(chk_fact));
+    kg_sdram_check u_chk (.clk(clk96), .wr_i(rom_wr), .addr_i(rom_addr[14:0]), .data_i(rom_data), .go(ld_seen & ~romloader_active), .init_done(sd_init), .run(chk_run),
+        .addr_o(chk_addr), .wr_o(chk_wr), .data_o(chk_data), .rst_o(chk_rst), .pol_o(chk_pol), .cap_o(chk_cap),
+        .rd_valid(chk_rdvalid), .rdata(chk_rdata), .done(chk_done), .matrix_done(chk_mdone), .timeout(chk_tmo), .cell_ok(chk_cok), .cell_bad(chk_cbad),
+        .err_final(chk_efin), .first_addr(chk_fa), .first_exp(chk_fe), .first_act(chk_fact));
     reg chk_seen = 1'b0;  always @(posedge clk96) if (chk_run) chk_seen <= 1'b1;
     wire [7:0] dbg_r, dbg_g, dbg_b;  wire dbg_hs, dbg_vs;
     reg [26:0] hb27 = 27'd0;
@@ -180,10 +183,10 @@ module karabas_go_osca_top (
     end
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
-        .flags3({1'b1, 1'b1, chk_done, chk_done & (chk_e1 == 16'd0) & (chk_e2 == 16'd0), ~chk_tmo, chk_p2, chk_p1, chk_seen}),
-        .err1(chk_e1), .err2(chk_e2), .first_addr(chk_fa), .first_ea({chk_fe, chk_fact}),
+        .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
+        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(chk_fa), .first_ea({chk_fe, chk_fact}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
-    wire show_dbg = ~dbg_hold[31];   // status screen for ~22 s after OSCA is released (bring-up)
+    wire show_dbg = ~dbg_hold[30];   // status screen for ~11 s after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
     // give the DAC the inverted pixel clock (it samples in the middle of the pixel).  The FT812 is kept off the VGA bus.
     reg [7:0] vo_r = 8'h00, vo_g = 8'h00, vo_b = 8'h00;  reg vo_hs = 1'b1, vo_vs = 1'b1;

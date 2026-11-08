@@ -51,6 +51,7 @@ module kg_osca_soc (
     output wire system_reset_out,
     // system RAM on the SDRAM (clk_mem domain)
     input  wire        sdram_reset,
+    input  wire        sdram_cap_late,    // SDRAM read data capture variant (see kg_osca_sdram cap_late)
     output wire        sdram_init_done,
     output wire [1:0]  sd_ba,
     output wire [12:0] sd_a,
@@ -152,7 +153,7 @@ module kg_osca_soc (
     kg_osca_sdram sdram (
         .clk(clk_mem), .reset(sdram_reset),
         .addr(sys_addr_m), .cs_n(sys_cs_m), .wr_n(sys_wr_m), .wdata(sys_wd_m),
-        .block_refresh(~z80_busreq | ~busak_n),
+        .block_refresh(~z80_busreq | ~busak_n), .cap_late(sdram_cap_late),
         .hint_addr(linecop_pc_o),                        // the line copper reads its list sequentially: keep its word and the next one loaded         // the DMA cannot be stalled: no refresh while the FPGA asks for / owns the bus
         .rdata(sys_rdata), .rd_valid(sdram_rd_valid), .wr_pending(sdram_wr_pending), .init_done(sdram_init_done),
         .sd_ba(sd_ba), .sd_a(sd_a), .sd_dqm(sd_dqm), .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_dq(sd_dq));

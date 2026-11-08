@@ -10,14 +10,17 @@
 //   pc_s     : address of an opcode fetch sampled once per frame (16 bits, bit 15 left)
 //   op_s     : the opcode read there (8 bits)
 //   pc_max   : highest opcode fetch address seen
-//   flags3   : SDRAM self test (see kg_sdram_check), green = good: 0 started  1 pass 1 done  2 pass 2 done  3 no timeout  4 done without errors  5 done
-//   err1 / err2 : mismatches in pass 1 / pass 2 (cyan);  first bad address (magenta);  expected byte | read byte there (orange)
+//   flags3   : SDRAM calibration (kg_sdram_check), left to right: always green, started, matrix done, no timeout, final verify without errors, done,
+//              chosen SDR_CLK polarity (green = 1), chosen capture (green = 1)
+//   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
+//              green = no mismatch, red = 100 or more, yellow = a few
+//   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142
 ) (
     input  wire        clk16,
-    input  wire [7:0]  flags, flags2, flags3,
-    input  wire [15:0] bytes, pc_s, pc_max, err1, err2, first_addr, first_ea,
+    input  wire [7:0]  flags, flags2, flags3, cell_ok, cell_bad,
+    input  wire [15:0] bytes, pc_s, pc_max, err_final, first_addr, first_ea,
     input  wire [7:0]  op_s,
     output reg  [7:0]  r, g, b,
     output reg         hs, vs
@@ -37,6 +40,8 @@ module kg_dbg_video #(
     wire [2:0] blk8  = x < 9'd48 ? 3'd0 : x < 9'd96 ? 3'd1 : x < 9'd144 ? 3'd2 : x < 9'd192 ? 3'd3 :
                        x < 9'd240 ? 3'd4 : x < 9'd288 ? 3'd5 : x < 9'd336 ? 3'd6 : 3'd7;
     wire gap8  = (x == 9'd0) || (x == 9'd48) || (x == 9'd96) || (x == 9'd144) || (x == 9'd192) || (x == 9'd240) || (x == 9'd288) || (x == 9'd336);
+    wire [1:0] blk4  = x < 9'd96 ? 2'd0 : x < 9'd192 ? 2'd1 : x < 9'd288 ? 2'd2 : 2'd3;
+    wire gap4  = (x == 9'd0) || (x == 9'd96) || (x == 9'd192) || (x == 9'd288) || (x >= 9'd384);
     wire [3:0] blk16 = x / 9'd24;
     wire gap16 = (x % 9'd24) == 9'd0;
     wire [8:0] bar_w = bytes[15:6];                         // 0..313 for 20142 bytes (1 pixel = 64 bytes)
@@ -62,13 +67,15 @@ module kg_dbg_video #(
                 if (!gap16) begin if (pc_max[15 - blk16]) begin r <= 8'hff; g <= 8'hff; b <= 8'h00; end else begin r <= 8'h30; g <= 8'h30; b <= 8'h00; end end
             end else if (ln >= 10'd270 && ln < 10'd300) begin     // flags3: SDRAM self test, green = good
                 if (!gap8) begin if (flags3[blk8]) g <= 8'hff; else r <= 8'hff; end
-            end else if (ln >= 10'd310 && ln < 10'd340) begin     // err1 (cyan)
-                if (!gap16) begin if (err1[15 - blk16]) begin g <= 8'hff; b <= 8'hff; end else begin g <= 8'h30; b <= 8'h30; end end
-            end else if (ln >= 10'd350 && ln < 10'd380) begin     // err2 (cyan)
-                if (!gap16) begin if (err2[15 - blk16]) begin g <= 8'hff; b <= 8'hff; end else begin g <= 8'h30; b <= 8'h30; end end
-            end else if (ln >= 10'd390 && ln < 10'd420) begin     // first bad address (magenta)
+            end else if (ln >= 10'd310 && ln < 10'd340) begin     // matrix, image written with polarity 0: cells 0..3 = read variants (p0,c0) (p0,c1) (p1,c0) (p1,c1)
+                if (!gap4) begin if (cell_ok[blk4]) g <= 8'hff; else if (cell_bad[blk4]) r <= 8'hff; else begin r <= 8'hff; g <= 8'hc0; end end
+            end else if (ln >= 10'd345 && ln < 10'd375) begin     // matrix, image written with polarity 1: cells 4..7
+                if (!gap4) begin if (cell_ok[{1'b1, blk4[1:0]}]) g <= 8'hff; else if (cell_bad[{1'b1, blk4[1:0]}]) r <= 8'hff; else begin r <= 8'hff; g <= 8'hc0; end end
+            end else if (ln >= 10'd385 && ln < 10'd415) begin     // err_final (cyan)
+                if (!gap16) begin if (err_final[15 - blk16]) begin g <= 8'hff; b <= 8'hff; end else begin g <= 8'h30; b <= 8'h30; end end
+            end else if (ln >= 10'd420 && ln < 10'd450) begin     // first bad address (magenta)
                 if (!gap16) begin if (first_addr[15 - blk16]) begin r <= 8'hff; b <= 8'hff; end else begin r <= 8'h30; b <= 8'h30; end end
-            end else if (ln >= 10'd430 && ln < 10'd460) begin     // expected (left 8) and read (right 8) byte at the first bad address (orange)
+            end else if (ln >= 10'd455 && ln < 10'd485) begin     // expected (left 8) and read (right 8) byte at the first bad address (orange)
                 if (!gap16) begin if (first_ea[15 - blk16]) begin r <= 8'hff; g <= 8'h80; end else begin r <= 8'h30; g <= 8'h18; end end
             end
         end
