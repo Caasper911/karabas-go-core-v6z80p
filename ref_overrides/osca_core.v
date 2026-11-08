@@ -1,5 +1,7 @@
 // generated from osca_pal.sch
 module osca_core (
+    input  wire [8:0]  dbg_paddr,  // bring-up: palette probe address, and the two palette bytes there {zero_red BRAM, green_blue BRAM}
+    output wire [15:0] dbg_pdata,
     output wire [1:0] dbg_pal,     // bring-up taps: {colour_select[8] (displayed palette page), palette_write_select (written palette page)}
     output wire [29:0] dbg_core,   // bring-up taps: {cpu_databus_in[7:0], palette clk (XLXN_2825), palette enables XLXN_7421 / XLXN_2828, background_pixel[7:0], ywindow, xwindow, rgb_oe, palette_index[7:0]}
     output wire [7:0] vram_wdata,
@@ -272,6 +274,7 @@ module osca_core (
     wire [7:0] received_spi_byte;
     wire reset_req;
     wire rgb_oe;
+    wire [7:0] dbg_pd0, dbg_pd1;
     wire right_border_stop;
     wire rom_selected;
     wire scale_range_sel;
@@ -633,8 +636,8 @@ module osca_core (
     and2 XLXI_2459 (.I0(lb_build_addr[8]), .I1(XLXN_6790), .O(right_border_stop));
     buf_x XLXI_2624 (.I(live_palette), .O(colour_select[8]));
     buf_x XLXI_2623 [7:0] (.I(modified_palette_index[7:0]), .O(colour_select[7:0]));
-    ramb4_s8_s8 XLXI_2620 (.ADDRA(palette_wr_addr[8:0]), .ADDRB(colour_select[8:0]), .CLKA(XLXN_2825), .CLKB(clock_16mhz_dist), .DIA(cpu_databus_in[7:0]), .DIB(XLXN_7651[7:0]), .ENA(XLXN_2828), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(green_blue[7:0]));
-    ramb4_s8_s8 XLXI_2621 (.ADDRA(palette_wr_addr[8:0]), .ADDRB(colour_select[8:0]), .CLKA(XLXN_2825), .CLKB(clock_16mhz_dist), .DIA(cpu_databus_in[7:0]), .DIB(XLXN_7651[7:0]), .ENA(XLXN_7421), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(zero_red[7:0]));
+    ramb4_s8_s8 XLXI_2620 (.ADDRC(dbg_paddr), .DOC(dbg_pd0), .ADDRA(palette_wr_addr[8:0]), .ADDRB(colour_select[8:0]), .CLKA(XLXN_2825), .CLKB(clock_16mhz_dist), .DIA(cpu_databus_in[7:0]), .DIB(XLXN_7651[7:0]), .ENA(XLXN_2828), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(green_blue[7:0]));
+    ramb4_s8_s8 XLXI_2621 (.ADDRC(dbg_paddr), .DOC(dbg_pd1), .ADDRA(palette_wr_addr[8:0]), .ADDRB(colour_select[8:0]), .CLKA(XLXN_2825), .CLKB(clock_16mhz_dist), .DIA(cpu_databus_in[7:0]), .DIB(XLXN_7651[7:0]), .ENA(XLXN_7421), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(zero_red[7:0]));
     gnd XLXI_374 [7:0] (.G(XLXN_7651[7:0]));
     buf_x XLXI_2629 [7:0] (.I(cpu_address_bus[8:1]), .O(palette_wr_addr[7:0]));
     inv XLXI_413 (.I(cpu_write), .O(XLXN_2825));
@@ -1037,4 +1040,5 @@ module osca_core (
     assign linecop_pc_o = linecop_pc[18:0];
     assign dbg_core = {cpu_databus_in[7:0], XLXN_2825, XLXN_7421, XLXN_2828, background_pixel, ywindow, xwindow, rgb_oe, palette_index};
     assign dbg_pal = {colour_select[8], palette_wr_addr[8]};
+    assign dbg_pdata = {dbg_pd1, dbg_pd0};
 endmodule

@@ -67,6 +67,8 @@ module kg_osca_soc (
     output wire [32:0] dbg,
     output wire [7:0]  chk_rdata,      // system RAM read data / valid (self test of the SDRAM through the loader port)
     output wire        chk_rdvalid,
+    input  wire [8:0]  dbg_paddr,       // palette probe (see osca_core)
+    output wire [15:0] dbg_pdata,
     output wire [1:0]  dbg4,            // palette pages (see osca_core dbg_pal)
     output wire [29:0] dbg3,            // OSCA core taps (see osca_core dbg_core)
     output wire [26:0] dbg2             // video RAM bus of the core: {vram_wr_n, vram_wdata[7:0], vram_rdata1[7:0] (display), vram_rdata2[7:0] (blitter / CPU)}
@@ -96,7 +98,7 @@ module kg_osca_soc (
     wire [18:0] linecop_pc_o;
 
     osca_core core (
-        .dbg_core(dbg3), .dbg_pal(dbg4),
+        .dbg_core(dbg3), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata),
         .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .vram_addr_out(vram_addr_out),
         .spr_wdata(spr_wdata), .spr_wdata_oe(spr_wdata_oe), .spr_rdata(spr_rdata),
         .spr_ram_wr(spr_ram_wr), .spr_ram_rd(spr_ram_rd), .spr_addrbus(spr_addrbus),
