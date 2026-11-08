@@ -1,0 +1,13 @@
+# SDRAM interface constraints for the design with an INVERTED SDR_CLK, IOB registers on the commands / data and the IOB capture register dq_iob
+# (branch wip/sdram-iob-timing).  Derived in docs/SDRAM_TIMING.md; Tclk = delay from the clk96 edge at the ODDR2 to the SDRAM CLK pin (ODDR2 + output buffer +
+# trace).  The numbers below ASSUME Tclk = 3.9 ns: read the real value (clock to pad of SDR_CLK) from the trce report of the first build and recompute:
+#   OFFSET IN  BEFORE = 10.27 - Tclk        VALID = 7.7        (read data window at the pins, relative to the capturing clk96 edge)
+#   OFFSET OUT AFTER  = Tclk + 3.71                            (setup of commands, addresses, DQM and write data at the chip)
+NET "SDR_DQ<*>" OFFSET = IN 6.4 ns VALID 7.7 ns BEFORE "clk96" RISING;
+NET "SDR_A<*>"   OFFSET = OUT 7.6 ns AFTER "clk96" RISING;
+NET "SDR_BA<*>"  OFFSET = OUT 7.6 ns AFTER "clk96" RISING;
+NET "SDR_DQM<*>" OFFSET = OUT 7.6 ns AFTER "clk96" RISING;
+NET "SDR_RAS_N"  OFFSET = OUT 7.6 ns AFTER "clk96" RISING;
+NET "SDR_CAS_N"  OFFSET = OUT 7.6 ns AFTER "clk96" RISING;
+NET "SDR_WE_N"   OFFSET = OUT 7.6 ns AFTER "clk96" RISING;
+NET "SDR_DQ<*>"  OFFSET = OUT 7.6 ns AFTER "clk96" RISING;

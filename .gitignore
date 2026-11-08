@@ -1,0 +1,5 @@
+build/
+ise/work/
+*.vvp
+__pycache__/
+modules/

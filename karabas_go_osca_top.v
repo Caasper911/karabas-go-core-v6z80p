@@ -1,0 +1,151 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// karabas_go_osca_top - OSCA (V6Z80P+ v1.1, converted schematics) on Karabas Go.
+//
+// STATUS: reviewed and lint-checked with yosys, NOT built with ISE / not run on hardware.
+//   done   : clocks (96 MHz DCM_CLKGEN + 16 MHz from the memory wrapper), soft Z80, three-SRAM wrapper,
+//            VGA out (4 bit -> 8 bit), audio (1 bit -> PCM5102), SD card (direct SPI), USB keyboard
+//            through the MCU (PS/2 device emulation), boot: a replacement boot ROM jumps to FLOS, which the
+//            MCU ROM loader has written into system RAM at $1000 (no PIC / EEPROM needed)
+//   NOT done: joystick serial protocol (serjoy2), PS/2 mouse (MCU MS_* -> PS/2 packets), second SD, RTC
+//////////////////////////////////////////////////////////////////////////////////
+module karabas_go_osca_top (
+    input  wire        CLK_50MHZ,
+    // SRAM
+    output wire [20:0] MA,
+    inout  wire [15:0] MD,
+    output wire [1:0]  MWR_N,
+    output wire [1:0]  MRD_N,
+    // video / audio
+    output wire [7:0]  VGA_R, VGA_G, VGA_B,
+    output wire        VGA_HS, VGA_VS,
+    output wire        DAC_LRCK, DAC_DAT, DAC_BCK, DAC_MUTE,
+    // SD card
+    output wire        SD_CS_N, SD_DI, SD_CLK,
+    input  wire        SD_DO,
+    // MCU (USB keyboard / mouse / joysticks)
+    input  wire        MCU_MOSI, MCU_SCK, MCU_CS_N,
+    output wire        MCU_MISO,
+    // SDRAM (system RAM); CS_N and CKE are tied on the board
+    output wire        SDR_CLK, SDR_RAS_N, SDR_CAS_N, SDR_WE_N,
+    output wire [1:0]  SDR_BA,
+    output wire [12:0] SDR_A,
+    output wire [1:0]  SDR_DQM,
+    inout  wire [15:0] SDR_DQ
+);
+    // ---------------------------------------------------------------- clocks
+    wire clk96_raw, dcm_locked, clk96, clk16_gen, clk16;
+    DCM_CLKGEN #(
+        .CLKFX_DIVIDE(25), .CLKFX_MULTIPLY(48),      // 50 MHz * 48 / 25 = 96 MHz = 6 * 16 MHz
+        .CLKIN_PERIOD(20.0), .SPREAD_SPECTRUM("NONE"), .STARTUP_WAIT("FALSE"),
+        .CLKFXDV_DIVIDE(2), .CLKFX_MD_MAX(0.0)
+    ) u_dcm (
+        .CLKIN(CLK_50MHZ), .CLKFX(clk96_raw), .CLKFX180(), .CLKFXDV(), .LOCKED(dcm_locked), .STATUS(),
+        .PROGCLK(1'b0), .PROGDATA(1'b0), .PROGEN(1'b0), .PROGDONE(), .FREEZEDCM(1'b0), .RST(1'b0));
+    BUFG u_bufg96 (.I(clk96_raw), .O(clk96));
+    BUFG u_bufg16 (.I(clk16_gen), .O(clk16));        // 16 MHz made by kg_osca_mem's tick counter
+
+    // reset: keep OSCA in reset until the DCM has locked (jumper_reset = 0 requests a reset)
+    reg [3:0] lock_sr = 4'h0;
+    always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked};
+    wire run = lock_sr[3];
+    wire        romloader_active;
+    // hold OSCA in reset while the MCU writes the boot image (romloader_active is a clk96 signal)
+    reg [1:0] load_s = 2'b00;
+    always @(posedge clk16) load_s <= {load_s[0], romloader_active};
+    reg [1:0] init_s = 2'b00;
+    always @(posedge clk16) init_s <= {init_s[0], sd_init};
+
+    // ---------------------------------------------------------------- MCU: USB keyboard scan codes
+    wire [7:0] kb_scancode;  wire kb_scancode_upd;
+    wire [2:0] unused_ms_b;
+    wire        rom_wr;
+    wire [31:0] rom_addr;
+    wire [7:0]  rom_data;
+    wire sd_init;
+    kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
+        .CLK(clk96), .N_RESET(dcm_locked & sd_init),   // the loader must not start before the SDRAM is initialised
+        .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
+        .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(1'b1), .MCU_BURST_READY(),
+        .MS_X(), .MS_Y(), .MS_B(unused_ms_b), .MS_Z(), .MS_UPD(),
+        .KB_STATUS(), .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
+        .KB_SCANCODE(kb_scancode), .KB_SCANCODE_UPD(kb_scancode_upd), .XT_SCANCODE(), .XT_SCANCODE_UPD(),
+        .PS2_COMMAND(16'h0000), .PS2_COMMAND_WR(1'b0),
+        .JOY_L(), .JOY_R(), .BTNS(),
+        .RTC_A(8'h00), .RTC_DI(8'h00), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
+        .UART_RX_DATA(), .UART_RX_IDX(), .UART_TX_DATA(8'h00), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
+        .UART_DLM(8'h00), .UART_DLL(8'h00), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
+        .FT_MISO(1'b0), .SD2_MISO(1'b0), .MATRIX_CMD(24'h000000), .MATRIX_CMD_WR(1'b0),
+        .DEBUG_ADDR(16'h0000), .DEBUG_DATA(16'h0000), .IMG_Q_WR(1'b0), .IMG_Q_DI(24'h000000),
+        .FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'b00), .ESP_UART_RX_DATA(8'h00), .ESP_UART_RX_WR(1'b0),
+        .ROMLOADER_ACTIVE(romloader_active), .ROMLOAD_ADDR(rom_addr), .ROMLOAD_DATA(rom_data), .ROMLOAD_WR(rom_wr),
+        .FLASHBOOT_START(1'b0), .FLASHBOOT_COREID(5'h00), .PRN_DATA(8'h00), .PRN_WR(1'b0));
+
+    // clk96 -> clk16 crossing of the (rare) scan code bytes: hold the byte, toggle a flag
+    reg [7:0] kb_hold = 8'h00; reg kb_tog = 1'b0;
+    always @(posedge clk96) if (kb_scancode_upd) begin kb_hold <= kb_scancode; kb_tog <= ~kb_tog; end
+    reg [2:0] kb_tog_s = 3'b000;
+    always @(posedge clk16) kb_tog_s <= {kb_tog_s[1:0], kb_tog};
+    wire kb_stb = kb_tog_s[2] ^ kb_tog_s[1];
+
+    // ---------------------------------------------------------------- SoC
+    wire [20:0] ma;  wire [15:0] md_o;  wire md_oe;
+    wire col_red_a, col_red_b, col_red_c, col_red_d, col_green_a, col_green_b, col_green_c, col_green_d;
+    wire col_blue_a, col_blue_b, col_blue_c, col_blue_d, horizontal_sync, tv_sync, audio_left, audio_right;
+    wire kb_clk_pull, kb_dat_pull, kb_clk_line, kb_dat_line;
+    wire sdc_clk, sdc_cs, sdc_din, sdc_pow, system_reset_out;
+
+    kg_osca_soc soc (
+        .clk_mem(clk96), .clk16_gen(clk16_gen), .clk16(clk16),
+        .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(MD), .mwr_n(MWR_N), .mrd_n(MRD_N),
+        .col_red_a(col_red_a), .col_red_b(col_red_b), .col_red_c(col_red_c), .col_red_d(col_red_d),
+        .col_green_a(col_green_a), .col_green_b(col_green_b), .col_green_c(col_green_c), .col_green_d(col_green_d),
+        .col_blue_a(col_blue_a), .col_blue_b(col_blue_b), .col_blue_c(col_blue_c), .col_blue_d(col_blue_d),
+        .horizontal_sync(horizontal_sync), .tv_sync(tv_sync),
+        .audio_left(audio_left), .audio_right(audio_right),
+        .ps2_kb_clock_in(kb_clk_line), .ps2_kb_data_in(kb_dat_line),
+        .ps2_ms_clock_in(1'b1), .ps2_ms_data_in(1'b1),
+        .ps2_kb_clock_out(kb_clk_pull), .ps2_kb_data_out(kb_dat_pull),
+        .ps2_ms_clock_out(), .ps2_ms_data_out(),
+        .sdc_clk(sdc_clk), .sdc_cs(sdc_cs), .sdc_din(sdc_din), .sdc_pow(sdc_pow), .sdc_dout(SD_DO),
+        .serial_tx_pin(), .serial_rx_pin(1'b1),
+        .joystick_clock_out(), .joystick_data_in(1'b1),        // TODO: serjoy2 protocol
+        .ld_active(romloader_active), .ld_addr(rom_addr), .ld_data(rom_data), .ld_wr(rom_wr),   // boot image from the MCU
+        .jumper_nmi(1'b1), .jumper_reset(run & ~load_s[1] & init_s[1]), .jumper_vga(1'b0),   // 0 = VGA video mode
+        .expansion_pin_a(), .expansion_pin_b(),
+        .system_reset_out(system_reset_out),
+        .sdram_reset(~dcm_locked), .sdram_init_done(sd_init),
+        .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ));
+
+    // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
+    wire clk96_n = ~clk96;
+    ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) u_sdrclk (.Q(SDR_CLK), .C0(clk96), .C1(clk96_n), .CE(1'b1), .D0(1'b1), .D1(1'b0), .R(1'b0), .S(1'b0));
+
+    // SRAM pads
+    assign MA = ma;
+    assign MD = md_oe ? md_o : 16'bz;
+
+    // PS/2 keyboard device (open drain: *_pull = 1 holds the line low - polarity to be confirmed on hardware)
+    kg_osca_ps2dev u_kbd (.clk(clk16), .scan_in(kb_hold), .scan_stb(kb_stb),
+                          .host_clk_pull(kb_clk_pull), .host_data_pull(kb_dat_pull),
+                          .clk_line(kb_clk_line), .data_line(kb_dat_line));
+
+    // video: OSCA's a..d are the 4 bits of each channel, a = MSB;  VGA-mode syncs: HS and (tv_sync) VS
+    assign VGA_R  = {col_red_a,   col_red_b,   col_red_c,   col_red_d,   col_red_a,   col_red_b,   col_red_c,   col_red_d};
+    assign VGA_G  = {col_green_a, col_green_b, col_green_c, col_green_d, col_green_a, col_green_b, col_green_c, col_green_d};
+    assign VGA_B  = {col_blue_a,  col_blue_b,  col_blue_c,  col_blue_d,  col_blue_a,  col_blue_b,  col_blue_c,  col_blue_d};
+    assign VGA_HS = horizontal_sync;
+    assign VGA_VS = tv_sync;
+
+    // audio
+    wire [15:0] pcm_l, pcm_r;
+    kg_osca_audio u_aud (.clk(clk16), .pdm_l(audio_left), .pdm_r(audio_right), .left(pcm_l), .right(pcm_r));
+    kg_pcm5102 #(.DIV_BITS(1)) u_dac (.clk(clk16), .reset(~run), .left(pcm_l), .right(pcm_r),
+                                      .din(DAC_DAT), .bck(DAC_BCK), .lrck(DAC_LRCK));
+    assign DAC_MUTE = 1'b1;
+
+    // SD card straight from the core's SPI engine (pow is ignored)
+    assign SD_CLK  = sdc_clk;
+    assign SD_CS_N = sdc_cs;
+    assign SD_DI   = sdc_din;
+endmodule
