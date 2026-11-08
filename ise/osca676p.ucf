@@ -178,3 +178,9 @@ INST "ld_act_r*"  TNM = "GRP_CHK";
 INST "ld_addr_r*" TNM = "GRP_CHK";
 INST "ld_data_r*" TNM = "GRP_CHK";
 INST "ld_wr_r*"   TNM = "GRP_CHK";
+
+# T80pa runs on clk96 but advances only on CEN_p / CEN_n pulses (one per Z80 clock = 6 ticks): its internal paths are multi-cycle (62.5 ns).  Paths to / from the rest of the design keep the 10.4 ns period.
+INST "soc/cpu/u_z80/*" TNM = "GRP_T80";
+TIMESPEC "TS_t80_internal" = FROM "GRP_T80" TO "GRP_T80" 62.5 ns;
+TIMESPEC "TS_t80_sdram" = FROM "GRP_T80" TO "GRP_SDRAM" 31.2 ns;      # the address / control outputs of T80pa change at most every 6 ticks of clk96
+TIMESPEC "TS_t80_mem"   = FROM "GRP_T80" TO "GRP_MEM"   31.2 ns;

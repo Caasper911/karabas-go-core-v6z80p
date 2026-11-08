@@ -142,7 +142,7 @@ module kg_osca_soc (
         .expansion_pin_a(expansion_pin_a), .expansion_pin_b(expansion_pin_b));
 
     kg_osca_cpu cpu (
-        .clk(clk16), .clk_fast(clk_mem), .reset_n(system_reset_out), .wait_n(z80_wait), .ext_wait_n(sdram_wait_n), .int_n(z80_int), .nmi_n(z80_nmi),
+        .clk(clk16), .clk_fast(clk_mem), .clk16_raw(clk16_gen), .reset_n(system_reset_out), .wait_n(z80_wait), .ext_wait_n(sdram_wait_n), .int_n(z80_int), .nmi_n(z80_nmi),
         .busrq_n(z80_busreq), .busak_n(busak_n), .m1_n(m1_n),
         .fpga_a(z80_addr_o), .fpga_mreq_n(z80_mreq_o), .fpga_iorq_n(z80_ioreq_o),
         .fpga_rd_n(z80_read_o), .fpga_wr_n(z80_write_o),

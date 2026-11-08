@@ -5,7 +5,9 @@ cd /d C:\hobby\karabas_go_v6z80p\ise
 if not exist work mkdir work
 if not exist work\xst\projnav.tmp mkdir work\xst\projnav.tmp
 del /q osca676p.ngc work\osca676p.ngc work\osca676p.ngd work\osca676p_map.ncd work\osca676p.ncd work\osca676p.par work\osca676p.twr work\osca676p.bin work\osca676p.bit 2>nul
-xst -intstyle ise -ifn osca676p.xst -ofn work\osca676p.syr > work\xst_console.log 2>&1
+set XSTF=%1
+if "%XSTF%"=="" set XSTF=osca676p.xst
+xst -intstyle ise -ifn %XSTF% -ofn work\osca676p.syr > work\xst_console.log 2>&1
 if not exist osca676p.ngc (echo BUILD FAILED at xst & exit /b 1)
 copy /y osca676p.ngc work\ > nul
 copy /y osca676p.ucf work\osca676p.ucf > nul

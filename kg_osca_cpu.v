@@ -20,6 +20,7 @@
 module kg_osca_cpu (
     input  wire        clk,
     input  wire        clk_fast,     // 96 MHz: used to delay the falling edge of WR# (see below)
+    input  wire        clk16_raw,    // the 16 MHz clock as a plain register output in the 96 MHz domain (phases of the Z80 clock for T80pa)
     input  wire        reset_n,      // system_reset_out
     input  wire        wait_n,       // z80_wait
     input  wire        ext_wait_n,   // extra wait (SDRAM not ready)
@@ -45,7 +46,23 @@ module kg_osca_cpu (
     wire [7:0]  cpu_do;
     wire        cpu_mreq_n, cpu_iorq_n, cpu_rd_n, cpu_wr_n, cpu_rfsh_n, cpu_halt_n;
 
-`ifdef KG_CPU_AZ80
+`ifdef KG_CPU_T80PA
+    // T80pa (VHDL, from the t80se set of the Karabas Go cores): runs on the 96 MHz clock; CEN_p / CEN_n mark the rising / falling edge of the 16 MHz Z80 clock.  Its outputs (MREQ#, RD#,
+    // WR#, IORQ#, the address, the data) come out with the phase relations of a real Z80, WAIT# is sampled at the falling edge, the data is latched in the middle of T3.
+    reg c16_d = 1'b0;
+    always @(posedge clk_fast) c16_d <= clk16_raw;
+    wire cen_p = clk16_raw & ~c16_d;
+    wire cen_n = ~clk16_raw & c16_d;
+`ifdef KG_T80PA_GHDL
+    T80pa u_z80 (          // the Verilog translation made by ghdl --synth has Mode = 0 built in
+`else
+    T80pa #(.Mode(0)) u_z80 (
+`endif
+        .RESET_n(reset_n), .CLK(clk_fast), .CEN_p(cen_p), .CEN_n(cen_n), .WAIT_n(cpu_wait_n), .INT_n(int_n), .NMI_n(nmi_n), .BUSRQ_n(busrq_n), .OUT0(1'b0),
+        .DI(d_bus), .R800_mode(1'b0), .DIRSet(1'b0), .DIR(212'd0),
+        .M1_n(m1_n), .MREQ_n(cpu_mreq_n), .IORQ_n(cpu_iorq_n), .RD_n(cpu_rd_n), .WR_n(cpu_wr_n), .RFSH_n(cpu_rfsh_n), .HALT_n(cpu_halt_n), .BUSAK_n(busak_n),
+        .A(cpu_a), .DO(cpu_do), .REG());
+`elsif KG_CPU_AZ80
     // A-Z80 (az80/): outputs with the phase relations of a real Z80 (WR# falls half a clock after MREQ# / the address), so the delay of WR# below is not used
     kg_az80 u_z80 (
         .clk(clk), .reset_n(reset_n), .wait_n(cpu_wait_n), .int_n(int_n), .nmi_n(nmi_n), .busrq_n(busrq_n),
@@ -80,6 +97,16 @@ module kg_osca_cpu (
     // A real Z80 changes its outputs some tens of ns AFTER the clock edge.  OSCA relies on it: many registers are clocked by the
     // write strobe delayed by one cycle (delayed_cpu_wr) and still expect the OLD address / data at that edge.  T80 changes
     // everything on the clock edge itself, so the outputs are staged through falling-edge registers (half a cycle later).
+`ifdef KG_CPU_T80PA
+    // no staging: T80pa already gives the phases of a real Z80
+    wire [15:0] cpu_a_q = cpu_a;  wire [7:0] cpu_do_q = cpu_do;
+    wire cpu_mreq_q = cpu_mreq_n, cpu_iorq_q = cpu_iorq_n, cpu_rd_q = cpu_rd_n, cpu_wr_q = cpu_wr_n;
+    assign a_bus      = cpu_owns ? cpu_a_q      : fpga_a;
+    assign mreq_n_bus = cpu_owns ? cpu_mreq_q   : fpga_mreq_n;
+    assign iorq_n_bus = cpu_owns ? cpu_iorq_q   : fpga_iorq_n;
+    assign rd_n_bus   = cpu_owns ? cpu_rd_q     : fpga_rd_n;
+    assign wr_n_bus   = cpu_owns ? cpu_wr_q     : fpga_wr_n;
+`else
     reg [15:0] cpu_a_q    = 16'h0000;
     reg [7:0]  cpu_do_q   = 8'h00;
     reg        cpu_mreq_q = 1'b1, cpu_iorq_q = 1'b1, cpu_rd_q = 1'b1, cpu_wr_q = 1'b1;
@@ -120,6 +147,8 @@ module kg_osca_cpu (
     wire cpu_wr_late = cpu_wr_q | wr_d2;
 `endif
     assign wr_n_bus   = cpu_owns ? cpu_wr_late                      : fpga_wr_n;
+
+`endif
 
     // ---- data bus: FPGA (register reads) > CPU (writes) > RAM (reads, only while selected) > pull-down
     reg [7:0] do_q  = 8'h00;
