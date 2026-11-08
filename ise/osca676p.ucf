@@ -173,3 +173,8 @@ INST "soc/mem/*"        TNM = "GRP_MEM";
 TIMESPEC "TS_sysrd_mem"  = FROM FFS THRU "TH_SYSRD" TO "GRP_MEM" TIG;
 TIMESPEC "TS_loader_mem" = FROM "GRP_LOADER" TO "GRP_MEM" TIG;
 TIMESPEC "TS_chk_mem"    = FROM "GRP_CHK" TO "GRP_MEM" TIG;
+# the registered loader / self test port into the SDRAM controller changes at most every 5 clocks (self test) or far less often (MCU loader): multi-cycle
+INST "ld_act_r*"  TNM = "GRP_CHK";
+INST "ld_addr_r*" TNM = "GRP_CHK";
+INST "ld_data_r*" TNM = "GRP_CHK";
+INST "ld_wr_r*"   TNM = "GRP_CHK";

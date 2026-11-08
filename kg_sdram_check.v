@@ -55,7 +55,7 @@ module kg_sdram_check #(
     // ---- state
     localparam S_IDLE = 5'd0, S_SETUP = 5'd1, S_RI0 = 5'd2, S_RI1 = 5'd3, S_RI2 = 5'd4, S_RI3 = 5'd5,
                S_W0 = 5'd6, S_W1 = 5'd7, S_W2 = 5'd8, S_W3 = 5'd9, S_W4 = 5'd10,
-               S_R0 = 5'd11, S_R1 = 5'd12, S_R2 = 5'd13, S_R3 = 5'd14, S_END = 5'd15, S_SEL = 5'd16, S_FIN = 5'd17;
+               S_R0 = 5'd11, S_R1 = 5'd12, S_R2 = 5'd13, S_R3 = 5'd14, S_END = 5'd15, S_SEL = 5'd16, S_FIN = 5'd17, S_SEL1 = 5'd18, S_SEL2 = 5'd19, S_SEL3 = 5'd20;
     reg [4:0]  st = S_IDLE;
     reg [3:0]  sq = 4'd0;                    // step of the sequence
     reg [15:0] idx = 16'd0;                  // address (sequential) / current address (strided)
@@ -67,7 +67,8 @@ module kg_sdram_check #(
     reg [15:0] e0 = 16'd0, e1 = 16'd0, e6 = 16'd0, e7 = 16'd0;   // errors of the cells with equal write / read polarity
     reg [2:0]  cidx = 3'd0;
     reg        new_pol = 1'b0, new_cap = 1'b0, is_write = 1'b0;
-    reg [1:0]  best = 2'd0;
+    reg [1:0]  best = 2'd0, b_r = 2'd0;
+    reg [15:0] m_r = 16'd0;
     wire [16:0] nxt_sum = {1'b0, idx} + {1'b0, STRIDE};
     wire [15:0] nxt = (nxt_sum >= {1'b0, N}) ? (nxt_sum - {1'b0, N}) : nxt_sum[15:0];
 
@@ -173,17 +174,12 @@ module kg_sdram_check #(
         end
 
         // ---- choose the best variant (errors e0 / e1 with polarity 0, e6 / e7 with polarity 1), write the image again and verify
-        S_SEL: begin
-            // best = index of the minimum, ties prefer 2:(p1,c0), then 3:(p1,c1), 1:(p0,c1), 0:(p0,c0)
-            begin : pick
-                reg [15:0] m; reg [1:0] b;
-                m = e0; b = 2'd0;
-                if (e1 <= m) begin m = e1; b = 2'd1; end
-                if (e7 <= m) begin m = e7; b = 2'd3; end
-                if (e6 <= m) begin m = e6; b = 2'd2; end          // ties: polarity 1 with the fabric capture first (it is the variant verified in the simulation regression)
-                best <= b;
-                is_write <= 1'b1; new_pol <= b[1]; new_cap <= b[0];
-            end
+        S_SEL:  begin m_r <= e0; b_r <= 2'd0; st <= S_SEL1; end
+        S_SEL1: begin if (e1 <= m_r) begin m_r <= e1; b_r <= 2'd1; end st <= S_SEL2; end
+        S_SEL2: begin if (e7 <= m_r) begin m_r <= e7; b_r <= 2'd3; end st <= S_SEL3; end
+        S_SEL3: begin                                           // ties: polarity 1 with the fabric capture first (the variant verified in the simulation regression)
+            if (e6 <= m_r) begin best <= 2'd2; is_write <= 1'b1; new_pol <= 1'b1; new_cap <= 1'b0; end
+            else           begin best <= b_r;  is_write <= 1'b1; new_pol <= b_r[1]; new_cap <= b_r[0]; end
             sq <= 4'd10; st <= S_SETUP;
         end
 
