@@ -10,13 +10,14 @@
 //   pc_s     : address of an opcode fetch sampled once per frame (16 bits, bit 15 left)
 //   op_s     : the opcode read there (8 bits)
 //   pc_max   : highest opcode fetch address seen
-//   colour bars (RGB wiring check)
+//   flags3   : SDRAM self test (see kg_sdram_check), green = good: 0 started  1 pass 1 done  2 pass 2 done  3 no timeout  4 done without errors  5 done
+//   err1 / err2 : mismatches in pass 1 / pass 2 (cyan);  first bad address (magenta);  expected byte | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142
 ) (
     input  wire        clk16,
-    input  wire [7:0]  flags, flags2,
-    input  wire [15:0] bytes, pc_s, pc_max,
+    input  wire [7:0]  flags, flags2, flags3,
+    input  wire [15:0] bytes, pc_s, pc_max, err1, err2, first_addr, first_ea,
     input  wire [7:0]  op_s,
     output reg  [7:0]  r, g, b,
     output reg         hs, vs
@@ -45,22 +46,30 @@ module kg_dbg_video #(
         vs <= ~(ln < 10'd2);
         r <= 8'h00; g <= 8'h00; b <= 8'h00;
         if (act_x && act_y) begin
-            if (ln < 10'd100) begin                               // flags
+            if (ln < 10'd75) begin                                // flags
                 if (!gap8) begin if (flags[blk8]) g <= 8'hff; else r <= 8'hff; end
-            end else if (ln >= 10'd110 && ln < 10'd170) begin     // flags2
+            end else if (ln >= 10'd85 && ln < 10'd120) begin      // flags2
                 if (!gap8) begin if (flags2[blk8]) g <= 8'hff; else r <= 8'hff; end
-            end else if (ln >= 10'd190 && ln < 10'd220) begin     // progress bar
+            end else if (ln >= 10'd130 && ln < 10'd150) begin     // progress bar
                 if (x == bar_end) begin r <= 8'hff; g <= 8'hff; b <= 8'hff; end
                 else if (x < bar_w) begin g <= 8'hff; b <= 8'hff; end
                 else if (x < 9'd340) begin r <= 8'h20; g <= 8'h20; b <= 8'h20; end
-            end else if (ln >= 10'd240 && ln < 10'd290) begin     // pc_s
+            end else if (ln >= 10'd160 && ln < 10'd190) begin     // pc_s
                 if (!gap16) begin if (pc_s[15 - blk16]) begin r <= 8'hff; g <= 8'hff; b <= 8'hff; end else begin r <= 8'h30; g <= 8'h30; b <= 8'h30; end end
-            end else if (ln >= 10'd300 && ln < 10'd350) begin     // op_s
+            end else if (ln >= 10'd195 && ln < 10'd225) begin     // op_s
                 if (!gap8) begin if (op_s[7 - blk8]) begin r <= 8'hff; g <= 8'hff; b <= 8'hff; end else begin r <= 8'h30; g <= 8'h30; b <= 8'h30; end end
-            end else if (ln >= 10'd360 && ln < 10'd410) begin     // pc_max
+            end else if (ln >= 10'd230 && ln < 10'd260) begin     // pc_max
                 if (!gap16) begin if (pc_max[15 - blk16]) begin r <= 8'hff; g <= 8'hff; b <= 8'h00; end else begin r <= 8'h30; g <= 8'h30; b <= 8'h00; end end
-            end else if (ln >= 440) begin                         // colour bars
-                r <= {8{blk8[2]}}; g <= {8{blk8[1]}}; b <= {8{blk8[0]}};
+            end else if (ln >= 10'd270 && ln < 10'd300) begin     // flags3: SDRAM self test, green = good
+                if (!gap8) begin if (flags3[blk8]) g <= 8'hff; else r <= 8'hff; end
+            end else if (ln >= 10'd310 && ln < 10'd340) begin     // err1 (cyan)
+                if (!gap16) begin if (err1[15 - blk16]) begin g <= 8'hff; b <= 8'hff; end else begin g <= 8'h30; b <= 8'h30; end end
+            end else if (ln >= 10'd350 && ln < 10'd380) begin     // err2 (cyan)
+                if (!gap16) begin if (err2[15 - blk16]) begin g <= 8'hff; b <= 8'hff; end else begin g <= 8'h30; b <= 8'h30; end end
+            end else if (ln >= 10'd390 && ln < 10'd420) begin     // first bad address (magenta)
+                if (!gap16) begin if (first_addr[15 - blk16]) begin r <= 8'hff; b <= 8'hff; end else begin r <= 8'h30; b <= 8'h30; end end
+            end else if (ln >= 10'd430 && ln < 10'd460) begin     // expected (left 8) and read (right 8) byte at the first bad address (orange)
+                if (!gap16) begin if (first_ea[15 - blk16]) begin r <= 8'hff; g <= 8'h80; end else begin r <= 8'h30; g <= 8'h18; end end
             end
         end
     end
