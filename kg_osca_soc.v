@@ -21,6 +21,11 @@ module kg_osca_soc (
     input  wire [15:0] md_i,
     output wire [1:0]  mwr_n,
     output wire [1:0]  mrd_n,
+    input  wire        t_en,                // bring-up SRAM self test (kg_sram_test) drives the SRAM pins while 1
+    input  wire [20:0] t_ma,
+    input  wire [15:0] t_md,
+    input  wire        t_oe,
+    input  wire [1:0]  t_wr_n, t_rd_n,
 
     // video
     output wire col_red_a, col_red_b, col_red_c, col_red_d,
@@ -136,7 +141,8 @@ module kg_osca_soc (
         .vram_addr(vram_addr_out), .vram_wr_n(vram_wr), .vram_wdata(vram_wdata),
         .vram_rdata1(vram_rdata), .vram_rdata2(vram_rdata2),
         .spr_addr(spr_addrbus),    .spr_wr_n(spr_ram_wr), .spr_wdata(spr_wdata), .spr_rdata(spr_rdata),
-        .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(md_i), .mwr_n(mwr_n), .mrd_n(mrd_n));
+        .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(md_i), .mwr_n(mwr_n), .mrd_n(mrd_n),
+        .t_en(t_en), .t_ma(t_ma), .t_md(t_md), .t_oe(t_oe), .t_wr_n(t_wr_n), .t_rd_n(t_rd_n));
 
     // System RAM on the SDRAM.  The MCU loader owns the port while ld_active.  (Define KG_SYSRAM_MODEL for the zero-latency model.)
     wire [18:0] sys_addr_m = ld_active ? ld_addr[18:0] : {system_ram_a18, system_ram_a17, system_ram_a16, system_ram_a15, system_ram_a14, a_bus[13:0]};

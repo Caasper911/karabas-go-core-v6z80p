@@ -52,10 +52,11 @@ module karabas_go_osca_top (
     always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked};
     wire run = lock_sr[3];
     wire        romloader_active;
+    wire        sram_run, sram_done, sram_alias0;  wire [20:0] s_ma, s_amask;  wire [15:0] s_md;  wire s_oe;  wire [1:0] s_wr_n, s_rd_n;  wire [7:0] s_dm0, s_dm1;
     wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
     // hold OSCA in reset while the MCU writes the boot image (romloader_active is a clk96 signal)
     reg [1:0] load_s = 2'b00;
-    always @(posedge clk16) load_s <= {load_s[0], romloader_active | chk_run};
+    always @(posedge clk16) load_s <= {load_s[0], romloader_active | chk_run | sram_run};
     reg [1:0] init_s = 2'b00;
     always @(posedge clk16) init_s <= {init_s[0], sd_init};
 
@@ -131,7 +132,8 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid));
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid),
+        .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
     wire clk96_n = ~clk96;
@@ -167,6 +169,9 @@ module karabas_go_osca_top (
         .addr_o(chk_addr), .wr_o(chk_wr), .data_o(chk_data), .rst_o(chk_rst), .pol_o(chk_pol), .cap_o(chk_cap),
         .rd_valid(chk_rdvalid), .rdata(chk_rdata), .done(chk_done), .matrix_done(chk_mdone), .timeout(chk_tmo), .cell_ok(chk_cok), .cell_bad(chk_cbad),
         .err_final(chk_efin), .first_addr(chk_fa), .first_exp(chk_fe), .first_act(chk_fact));
+    // SRAM self test after the SDRAM self test (the core is still in reset)
+    kg_sram_test u_sram (.clk(clk96), .go(chk_done), .run(sram_run), .ma(s_ma), .md(s_md), .oe(s_oe), .wr_n(s_wr_n), .rd_n(s_rd_n), .md_i(MD),
+        .done(sram_done), .dmask0(s_dm0), .dmask1(s_dm1), .amask(s_amask), .alias0(sram_alias0));
     reg chk_seen = 1'b0;  always @(posedge clk96) if (chk_run) chk_seen <= 1'b1;
     wire [7:0] dbg_r, dbg_g, dbg_b;  wire dbg_hs, dbg_vs;
     // ---- measurements on OSCA's own video (clk16 domain): HS period, lines per frame, non-black pixels per frame, colour bits ever set
@@ -204,8 +209,8 @@ module karabas_go_osca_top (
     kg_dbg_video u_dbg (.clk16(clk16),
         .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
-        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(chk_fa), .first_ea({chk_fe, chk_fact}),
-        .m_hs(m_hs), .m_lines(m_lines), .m_nb(m_nb), .m_col({colv, 4'd0}),
+        .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr({s_dm1, s_dm0}), .first_ea(s_amask[15:0]),
+        .m_hs(m_hs), .m_lines({s_amask[20:16], 3'd0, sram_done, sram_alias0, 6'd0}), .m_nb(m_nb), .m_col({colv, 4'd0}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

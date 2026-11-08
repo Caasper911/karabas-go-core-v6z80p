@@ -42,7 +42,14 @@ module kg_osca_mem #(
     output reg         md_oe  = 1'b0,
     input  wire [15:0] md_i,
     output wire [1:0]  mwr_n,
-    output wire [1:0]  mrd_n
+    output wire [1:0]  mrd_n,
+    // bring-up SRAM self test: when t_en = 1 the pins are driven by these (through the same IOB flip-flops)
+    input  wire        t_en,
+    input  wire [20:0] t_ma,
+    input  wire [15:0] t_md,
+    input  wire        t_oe,
+    input  wire [1:0]  t_wr_n,
+    input  wire [1:0]  t_rd_n
 );
     reg  [2:0] tick = 3'd0;
     wire [2:0] tick_n = (tick == N-1) ? 3'd0 : tick + 3'd1;
@@ -67,7 +74,7 @@ module kg_osca_mem #(
 
     reg [LAT:0] c1 = 0, c2 = 0, cs = 0;
     reg  [7:0]  md_q = 8'h00;
-    reg         wr_pre = 1'b0, mrd0_n = 1'b1, mwr0_n = 1'b1;
+    reg         wr_pre = 1'b0, mrd0_n = 1'b1, mwr0_n = 1'b1, mrd1_n = 1'b1, mwr1_n = 1'b1;
 
     always @(posedge clk_mem) begin
         wr_pre <= 1'b0;
@@ -101,11 +108,14 @@ module kg_osca_mem #(
         c1 <= {c1, go_a};
         cs <= {cs, go_b & ~do_s};
         c2 <= {c2, go_c & ~do_v};
+        if (t_en) begin ma <= t_ma; md_o <= t_md; md_oe <= t_oe; end
+        if (t_en) mrd0_n <= t_rd_n[0];
+        mrd1_n <= t_en ? t_rd_n[1] : 1'b1;
         if (c1[LAT]) vram_rdata1 <= md_q;
         if (c2[LAT]) vram_rdata2 <= md_q;
     end
     assign spr_rdata = md_q;
-    always @(negedge clk_mem) mwr0_n <= ~wr_pre;
-    assign mwr_n = {1'b1, mwr0_n};
-    assign mrd_n = {1'b1, mrd0_n};
+    always @(negedge clk_mem) begin mwr0_n <= t_en ? t_wr_n[0] : ~wr_pre; mwr1_n <= t_en ? t_wr_n[1] : 1'b1; end
+    assign mwr_n = {mwr1_n, mwr0_n};
+    assign mrd_n = {mrd1_n, mrd0_n};
 endmodule

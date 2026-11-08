@@ -6,7 +6,8 @@ module kg_osca_mem #(parameter N = 6, parameter LAT = 2, parameter SLOT_A = 1, p
     input  wire [18:0] vram_addr, input wire vram_wr_n, input wire [7:0] vram_wdata,
     output wire [7:0]  vram_rdata1, output wire [7:0] vram_rdata2,
     input  wire [16:0] spr_addr,  input wire spr_wr_n,  input wire [7:0] spr_wdata, output wire [7:0] spr_rdata,
-    output wire [20:0] ma, output wire [15:0] md_o, output wire md_oe, input wire [15:0] md_i, output wire [1:0] mwr_n, output wire [1:0] mrd_n
+    output wire [20:0] ma, output wire [15:0] md_o, output wire md_oe, input wire [15:0] md_i, output wire [1:0] mwr_n, output wire [1:0] mrd_n,
+    input wire t_en, input wire [20:0] t_ma, input wire [15:0] t_md, input wire t_oe, input wire [1:0] t_wr_n, input wire [1:0] t_rd_n
 );
     reg [2:0] tick = 3'd0;
     wire [2:0] tick_n = (tick == N-1) ? 3'd0 : tick + 3'd1;

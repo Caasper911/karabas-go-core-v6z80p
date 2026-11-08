@@ -14,7 +14,10 @@
 //              chosen SDR_CLK polarity (green = 1), chosen capture (green = 1)
 //   two rows of 4 cells: image written with SDR_CLK polarity 0 (upper) / 1 (lower), read back with variants (pol 0, cap 0) (0,1) (1,0) (1,1), left to right:
 //              green = no mismatch, red = 100 or more, yellow = a few
-//   rows 12-15 : measured on OSCA's own video: HS period in clk16 (508 = 0x1FC), lines per frame (524 = 0x20C), non-black pixels per frame, colour bits ever set
+//   row 10 (magenta) : SRAM data test, bits that read wrong: {chip 1 (MD[15:8]), chip 0 (MD[7:0])};  row 11 (orange): SRAM address lines 15..0 that fail
+//   row 12 : measured on OSCA's own video: HS period in clk16 (508 = 0x1FC)
+//   row 13 : {SRAM address lines 20..16 that fail, 3 zeros, SRAM test done, address 0 alias, 6 zeros}
+//   rows 14, 15 : non-black pixels per frame, colour bits ever set (measured on OSCA's own video)
 //   err_final : mismatches of the final verification (cyan);  first bad address of the first read test (magenta);  expected | read byte there (orange)
 module kg_dbg_video #(
     parameter [15:0] IMG_BYTES = 16'd20142
