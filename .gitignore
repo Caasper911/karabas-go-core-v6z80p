@@ -1,10 +1,11 @@
-build/
-ise/work/
 *.vvp
 __pycache__/
-modules/
-ise/_xmsgs/
+az80/
+build/
 ise/*.lso
 ise/*.ngc
 ise/*.ngr
 ise/*_xst.xrpt
+ise/_xmsgs/
+ise/work/
+modules/

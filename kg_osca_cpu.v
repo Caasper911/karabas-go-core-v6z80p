@@ -45,7 +45,13 @@ module kg_osca_cpu (
     wire [7:0]  cpu_do;
     wire        cpu_mreq_n, cpu_iorq_n, cpu_rd_n, cpu_wr_n, cpu_rfsh_n, cpu_halt_n;
 
-`ifdef KG_CPU_T80S_SYNTH
+`ifdef KG_CPU_AZ80
+    // A-Z80 (az80/): outputs with the phase relations of a real Z80 (WR# falls half a clock after MREQ# / the address), so the delay of WR# below is not used
+    kg_az80 u_z80 (
+        .clk(clk), .reset_n(reset_n), .wait_n(cpu_wait_n), .int_n(int_n), .nmi_n(nmi_n), .busrq_n(busrq_n),
+        .m1_n(m1_n), .mreq_n(cpu_mreq_n), .iorq_n(cpu_iorq_n), .rd_n(cpu_rd_n), .wr_n(cpu_wr_n),
+        .rfsh_n(cpu_rfsh_n), .halt_n(cpu_halt_n), .busak_n(busak_n), .a(cpu_a), .di(d_bus), .dout(cpu_do));
+`elsif KG_CPU_T80S_SYNTH
     // the board's T80s (VHDL), translated to Verilog by `ghdl --synth --out=verilog` (build/t80/t80s_synth.v): simulation with the real CPU
     T80s u_z80 (
         .RESET_n(reset_n), .CLK(clk), .CEN(1'b1), .WAIT_n(cpu_wait_n), .INT_n(int_n), .NMI_n(nmi_n), .BUSRQ_n(busrq_n),
@@ -108,7 +114,11 @@ module kg_osca_cpu (
     // by two ticks of the 96 MHz clock (21 ns); the rising edge is not delayed.
     reg wr_d1 = 1'b1, wr_d2 = 1'b1;
     always @(posedge clk_fast) begin wr_d1 <= cpu_wr_q; wr_d2 <= wr_d1; end
+`ifdef KG_CPU_AZ80
+    wire cpu_wr_late = cpu_wr_q;
+`else
     wire cpu_wr_late = cpu_wr_q | wr_d2;
+`endif
     assign wr_n_bus   = cpu_owns ? cpu_wr_late                      : fpga_wr_n;
 
     // ---- data bus: FPGA (register reads) > CPU (writes) > RAM (reads, only while selected) > pull-down
