@@ -67,6 +67,14 @@ module karabas_go_osca_top (
     wire        romloader_active;
     reg [15:0] f_a = 16'd0;  reg [7:0] f_d = 8'd0;                 // address / opcode of the current opcode fetch
     reg [31:0] dbg_hold = 32'd0;                       // counts while OSCA runs: bit 29 = status screen / OSCA picture, bit 30 = fixed palette test
+`ifdef KG_DEBUG_SCREEN
+    wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs
+    wire dbg_fix  = dbg_hold[30];    // bring-up: every other OSCA picture with the fixed 8-colour palette
+`else
+    // normal build: OSCA's picture only; the status screen, its measurements and the palette / bus probes have no consumer and are trimmed
+    wire show_dbg = 1'b0;
+    wire dbg_fix  = 1'b0;
+`endif
     wire        vram_run, vram_done;  wire [18:0] v_addr;  wire v_wr_n;  wire [7:0] v_wd;  wire [15:0] vt_es, vt_er, sv_err;  wire [63:0] vt_act;  wire [7:0] sv_a0, sv_a1;  wire sv_done;
     wire        sram_run, sram_done, sram_alias0;  wire [20:0] s_ma, s_amask;  wire [15:0] s_md;  wire s_oe;  wire [1:0] s_wr_n, s_rd_n;  wire [7:0] s_dm0, s_dm1;
     wire chk_run, chk_done, chk_mdone, chk_tmo, chk_wr, chk_rst, chk_pol, chk_cap;  wire [18:0] chk_addr;  wire [7:0] chk_fexp;  wire [7:0] chk_data, chk_cok, chk_cbad, chk_fe, chk_fact;  wire [15:0] chk_efin, chk_fa;
@@ -171,7 +179,7 @@ module karabas_go_osca_top (
         .system_reset_out(system_reset_out),
         .sdram_reset(~(dcm_locked & pll_locked) | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg5(dbg5), .dbg6(dbg6), .dbg7(dbg7), .dbg8(dbg8), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_hold[30]), .dbg_pdata(pal_pdata),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg5(dbg5), .dbg6(dbg6), .dbg7(dbg7), .dbg8(dbg8), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_fix), .dbg_pdata(pal_pdata),
         .v_en(vram_run), .v_addr(v_addr), .v_wr_n(v_wr_n), .v_wd(v_wd), .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -309,7 +317,6 @@ module karabas_go_osca_top (
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(dbg5[15:0]), .first_ea(dbg5[31:16]),
         .m_hs(pmask), .m_lines(p17), .m_nb(p18), .m_col({pfirst_i, pfirst[11:0]}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
-    wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
     // give the DAC the inverted pixel clock (it samples in the middle of the pixel).  The FT812 is kept off the VGA bus.
     reg [7:0] vo_r = 8'h00, vo_g = 8'h00, vo_b = 8'h00;  reg vo_hs = 1'b1, vo_vs = 1'b1;
