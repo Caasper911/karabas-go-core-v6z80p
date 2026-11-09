@@ -1,7 +1,8 @@
 `timescale 1ns / 1ps
 // kg_sdram_check - SDRAM self test and calibration for the real board.
 //
-// A copy of the boot image is kept in a block RAM while the MCU loader writes it (wr_i / addr_i / data_i).  When the loader has finished
+// The test data is a pattern of the address, N bytes from address 0.  The module starts when the SDRAM controller has been initialised and
+// runs before the MCU loader (which is held in reset until `done`).  When `go` is set
 // (`go`) the core is still in reset and this module owns the SDRAM controller's loader port.  Two interface variants are tried:
 //   pol_o : polarity of SDR_CLK  (0 = the same edge as clk96, 1 = inverted: the chip samples in the middle of the command window)
 //   cap_o : read data capture   (0 = fabric flip-flop at clock 6, 1 = IOB flip-flop at clock 7)
@@ -41,13 +42,10 @@ module kg_sdram_check #(
     input  wire [14:0] fa_i,                 // opcode fetch address of the running CPU: the expected byte of the boot image (valid two ticks later)
     output reg  [7:0]  fe_o = 8'd0
 );
-    reg [7:0] img [0:32767];
+    // The test data is a pattern of the address (no copy of the boot image any more): the calibration runs BEFORE the MCU loader, which then
+    // writes the image with the chosen settings, whatever its length.  (wr_i / addr_i / data_i / fa_i are not used; fe_o stays 0.)
     reg [7:0] exp_q = 8'd0;
-    always @(posedge clk) begin
-        if (wr_i) img[addr_i] <= data_i;
-        exp_q <= img[addr_o[14:0]];
-        fe_o  <= img[fa_i];
-    end
+    always @(posedge clk) exp_q <= addr_o[7:0] ^ addr_o[15:8] ^ {addr_o[3:0], addr_o[7:4]} ^ 8'hA5;
 
     reg [7:0] rd_q = 8'd0;
     reg       rv_q = 1'b0;

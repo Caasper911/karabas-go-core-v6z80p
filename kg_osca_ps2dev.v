@@ -131,10 +131,13 @@ module kg_osca_ps2dev #(
             else cnt <= cnt - 16'd1;
         end
         S_TXH: begin                                           // clock high again
-            if (!clk_line && !dclk_pull) begin                 // host pulled the clock: abort, retry later
+            // The host pulls the clock low before the 11th clock: abort, retry later.  After the 11th clock (the stop bit) the byte has been
+            // received: OSCA's interface inhibits the clock right then until the CPU has read the byte - that is no abort (it was taken as one and
+            // the byte was sent again and again: a key stayed pressed with FLOS 6.14).
+            if (!clk_line && !dclk_pull && bit_n != 4'd10) begin
                 ddata_pull <= 1'b0; st <= S_IDLE; idle_cnt <= 16'd0;
             end
-            else if (cnt == 16'd1) begin
+            else if (cnt == 16'd1 || (bit_n == 4'd10 && !clk_line && !dclk_pull)) begin
                 if (bit_n == 4'd10) begin
                     ddata_pull <= 1'b0; pop <= 1'b1; st <= S_IDLE; idle_cnt <= 16'd0;
                 end

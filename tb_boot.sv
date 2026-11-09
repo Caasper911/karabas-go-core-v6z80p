@@ -211,9 +211,14 @@ module tb_boot;
     // ---------------- type a key (Enter, PS/2 set 2: 5A make, F0 5A break) at KEY_MS
     task kb_send(input [7:0] b); begin @(posedge clk16); #1; kb_byte = b; kb_stb = 1'b1; @(posedge clk16); #1; kb_stb = 1'b0; end endtask
     initial begin
-        wait (ms >= KEY_MS);
-        kb_send(8'h5A); kb_send(8'hF0); kb_send(8'h5A);
-        $display("ms %0d: Enter sent to the keyboard device", ms);
+        if ($test$plusargs("keytest")) begin                   // +keytest: hold 'A' (1C) from 400 to 450 ms, then release (F0 1C)
+            wait (ms >= 400); kb_send(8'h1C); $display("ms %0d: A pressed", ms);
+            wait (ms >= 450); kb_send(8'hF0); kb_send(8'h1C); $display("ms %0d: A released", ms);
+        end else begin
+            wait (ms >= KEY_MS);
+            kb_send(8'h5A); kb_send(8'hF0); kb_send(8'h5A);
+            $display("ms %0d: Enter sent to the keyboard device", ms);
+        end
     end
 
 

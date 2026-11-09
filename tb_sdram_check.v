@@ -23,20 +23,32 @@ module tb_sdram_check;
         .addr_o(chk_addr), .wr_o(chk_wr), .data_o(chk_data), .rst_o(chk_rst), .pol_o(chk_pol), .cap_o(chk_cap),
         .rd_valid(rd_valid), .rdata(rdata), .done(chk_done), .matrix_done(mdone), .timeout(tmo), .cell_ok(cok), .cell_bad(cbad),
         .err_final(efin), .first_addr(fa), .first_exp(fe), .first_act(fact), .fa_i(15'd0), .fe_o());
-    integer i, seed = 7; reg [7:0] d;
+    // the image the loader writes AFTER the calibration (as on the board): longer than the calibration pattern (N = 20142), as the test programs are
+    localparam IMG = 49152;
+    reg [7:0] img [0:IMG-1];
+    integer i, seed = 7, rerr = 0, t;
     initial begin
         if ($value$plusargs("corrupt=%d", corrupt)) ;
+        for (i = 0; i < IMG; i = i + 1) img[i] = $random(seed);
+        l_active = 0;
         #200 reset0 = 0; wait (init_done); repeat (50) @(posedge clk);
-        for (i = 0; i < 20142; i = i + 1) begin
-            d = $random(seed);
-            @(posedge clk); l_addr <= i; l_data <= d; l_wr <= 1;
+        loader_done <= 1;                                   // `go` (on the board: the SDRAM controller has been initialised)
+        wait (chk_done); repeat (5) @(posedge clk);
+        $display("CHK done: matrix=%b timeout=%b cell_ok=%b cell_bad=%b final: pol=%b cap=%b errors=%0d first addr=%0d exp=%02h act=%02h", mdone, tmo, cok, cbad, chk_pol, chk_cap, efin, fa, fe, fact);
+        l_active <= 1;                                      // the MCU loader writes the image now
+        for (i = 0; i < IMG; i = i + 1) begin
+            @(posedge clk); l_addr <= i; l_data <= img[i]; l_wr <= 1;
             @(posedge clk); l_wr <= 0;
             repeat (14) @(posedge clk);
         end
         repeat (50) @(posedge clk);
-        l_active <= 0; loader_done <= 1;
-        wait (chk_done); repeat (5) @(posedge clk);
-        $display("CHK done: matrix=%b timeout=%b cell_ok=%b cell_bad=%b final: pol=%b cap=%b errors=%0d first addr=%0d exp=%02h act=%02h", mdone, tmo, cok, cbad, chk_pol, chk_cap, efin, fa, fe, fact);
+        for (i = 0; i < IMG; i = i + 1) begin               // read the whole image back through the same port
+            @(posedge clk); l_addr <= i; t = 0;
+            repeat (2) @(posedge clk);
+            while (!rd_valid && t < 100) begin @(posedge clk); t = t + 1; end
+            if (rdata !== img[i]) begin rerr = rerr + 1; if (rerr < 4) $display("IMAGE mismatch at %0d: %02h expected %02h", i, rdata, img[i]); end
+        end
+        $display("IMAGE after the calibration: %0d bytes written by the loader and read back, %0d wrong", IMG, rerr);
         $finish;
     end
 endmodule

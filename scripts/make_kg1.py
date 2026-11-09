@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a Karabas Go core file (.kg1) for the OSCA port: header (1024 bytes) + bitstream (.bin from bitgen) + ROM blocks + OSD item count.
 Layout from karabas-go-firmware (src/config.h FILE_POS_*, src/fpga/core_loader.cpp, lib/KarabasCommon/src/kg_format.cpp); no OSD items.
-The ROM block carries the FLOS boot image (ram_image.bin: FLOS at $1000 of the system RAM); the MCU writes it while the core is held in reset.
+The ROM block carries the FLOS boot image (ram_image_614.bin: FLOS 6.14 at $1000 of the system RAM); the MCU writes it while the core is held in reset.
 Usage: make_kg1.py [--bit ise/work/osca676p.bin] [--rom ram_image.bin] [--out ise/work/osca.kg1] [--build YYMMDDHH]"""
 import argparse, os, struct, time
 
@@ -14,7 +14,7 @@ def main():
     root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
     ap = argparse.ArgumentParser()
     ap.add_argument('--bit', default=os.path.join(root, 'ise', 'work', 'osca676p.bin'))
-    ap.add_argument('--rom', default=os.path.join(root, 'ram_image.bin'))
+    ap.add_argument('--rom', default=os.path.join(root, 'ram_image_614.bin'))   # FLOS 6.14 (ram_image.bin = FLOS 5.68, used by the simulation regression)
     ap.add_argument('--rom-addr', type=lambda x: int(x, 0), default=0)
     ap.add_argument('--out', default=os.path.join(root, 'ise', 'work', 'osca.kg1'))
     ap.add_argument('--build', default=time.strftime('%y%m%d%H'))

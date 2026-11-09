@@ -162,9 +162,10 @@ NET "FT_SPI_SCK"   LOC="A5" | IOSTANDARD = LVCMOS33;
 
 INST "vo_*" IOB = TRUE;
 # the SDRAM self test (kg_sdram_check) changes its address at most every 5 clocks and waits for rd_valid: multi-cycle into the SDRAM controller
-INST "u_chk/*"         TNM = "GRP_CHK";
+# only with KG_SDRAM_CAL (the calibration module exists then):
+# INST "u_chk/*"         TNM = "GRP_CHK";
 TIMESPEC "TS_chk_sdram" = FROM "GRP_CHK" TO "GRP_SDRAM" TIG;
-INST "ld_seen" TNM = "GRP_CHK";   # static after the loader has started (set once)
+# INST "ld_seen" TNM = "GRP_CHK";   # static after the loader has started (set once)
 # same false paths into any register of the SRAM wrapper (the placement changes which of them is critical)
 INST "soc/mem/*"        TNM = "GRP_MEM";
 TIMESPEC "TS_sysrd_mem"  = FROM FFS THRU "TH_SYSRD" TO "GRP_MEM" TIG;

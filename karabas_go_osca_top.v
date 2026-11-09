@@ -94,7 +94,7 @@ module karabas_go_osca_top (
     reg  sd_init_ever = 1'b0;                       // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
     always @(posedge clk96) if (sd_init) sd_init_ever <= 1'b1;
     kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
-        .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever),   // the loader must not start before the SDRAM is initialised
+        .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever & chk_done),   // the loader starts after the SDRAM initialisation (and the calibration with KG_SDRAM_CAL): the image is written with the final settings
         .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
         .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(1'b1), .MCU_BURST_READY(),
         .MS_X(), .MS_Y(), .MS_B(unused_ms_b), .MS_Z(), .MS_UPD(),
@@ -111,9 +111,14 @@ module karabas_go_osca_top (
         .ROMLOADER_ACTIVE(romloader_active), .ROMLOAD_ADDR(rom_addr), .ROMLOAD_DATA(rom_data), .ROMLOAD_WR(rom_wr),
         .FLASHBOOT_START(1'b0), .FLASHBOOT_COREID(5'h00), .PRN_DATA(8'h00), .PRN_WR(1'b0));
 
-    // clk96 -> clk16 crossing of the (rare) scan code bytes: hold the byte, toggle a flag
-    reg [7:0] kb_hold = 8'h00; reg kb_tog = 1'b0;
-    always @(posedge clk96) if (kb_scancode_upd) begin kb_hold <= kb_scancode; kb_tog <= ~kb_tog; end
+    // clk96 -> clk16 crossing of the (rare) scan code bytes: hold the byte, toggle a flag.  KB_SCANCODE_UPD of kg_mcu TOGGLES with every byte
+    // (kg_mcu_hid.v): a new byte is any change of its level.  (It was taken as a pulse: bytes were repeated while it was 1 and lost while it was 0,
+    // e.g. the break code F0 xx -> stuck keys.)
+    reg [7:0] kb_hold = 8'h00; reg kb_tog = 1'b0; reg kb_upd_d = 1'b0;
+    always @(posedge clk96) begin
+        kb_upd_d <= kb_scancode_upd;
+        if (kb_scancode_upd != kb_upd_d) begin kb_hold <= kb_scancode; kb_tog <= ~kb_tog; end
+    end
     reg [2:0] kb_tog_s = 3'b000;
     always @(posedge clk16) kb_tog_s <= {kb_tog_s[1:0], kb_tog};
     wire kb_stb = kb_tog_s[2] ^ kb_tog_s[1];
@@ -210,11 +215,19 @@ module karabas_go_osca_top (
         if (rom_wr) begin wr_seen <= 1'b1; if (ld_bytes != 16'hffff) ld_bytes <= ld_bytes + 16'd1; end
         if (osca_run) dbg_hold <= dbg_hold + 32'd1;
     end
-    // SDRAM self test: read the loaded image back through the loader port (the core is still in reset), compare with a copy in BRAM
-    kg_sdram_check u_chk (.clk(clk96), .wr_i(rom_wr), .addr_i(rom_addr[14:0]), .data_i(rom_data), .go(ld_seen & ~romloader_active), .init_done(sd_init), .run(chk_run),
+`ifdef KG_SDRAM_CAL
+    // SDRAM self test and calibration (polarity of SDR_CLK, read capture) with a test pattern, BEFORE the MCU loader writes the boot image
+    kg_sdram_check u_chk (.clk(clk96), .wr_i(rom_wr), .addr_i(rom_addr[14:0]), .data_i(rom_data), .go(sd_init_ever), .init_done(sd_init), .run(chk_run),
         .addr_o(chk_addr), .wr_o(chk_wr), .data_o(chk_data), .rst_o(chk_rst), .pol_o(chk_pol), .cap_o(chk_cap),
         .rd_valid(chk_rdvalid), .rdata(chk_rdata), .done(chk_done), .matrix_done(chk_mdone), .timeout(chk_tmo), .cell_ok(chk_cok), .cell_bad(chk_cbad),
         .err_final(chk_efin), .first_addr(chk_fa), .first_exp(chk_fe), .first_act(chk_fact), .fa_i(f_a[14:0]), .fe_o(chk_fexp));
+`else
+    // fixed SDRAM interface settings (what the calibration chose on the board, KG_SDRAM_CAL): SDR_CLK inverted, read data taken from the pins
+    assign chk_pol = 1'b1;  assign chk_cap = 1'b0;  assign chk_done = sd_init_ever;
+    assign chk_run = 1'b0;  assign chk_rst = 1'b0;  assign chk_wr = 1'b0;  assign chk_addr = 19'd0;  assign chk_data = 8'd0;
+    assign chk_mdone = 1'b0;  assign chk_tmo = 1'b0;  assign chk_cok = 8'd0;  assign chk_cbad = 8'd0;  assign chk_efin = 16'd0;
+    assign chk_fa = 16'd0;  assign chk_fe = 8'd0;  assign chk_fact = 8'd0;  assign chk_fexp = 8'd0;
+`endif
     // SRAM self test after the SDRAM self test (the core is still in reset)
     kg_sram_test u_sram (.clk(clk96), .go(chk_done), .run(sram_run), .ma(s_ma), .md(s_md), .oe(s_oe), .wr_n(s_wr_n), .rd_n(s_rd_n), .md_i(MD),
         .done(sram_done), .dmask0(s_dm0), .dmask1(s_dm1), .amask(s_amask), .alias0(sram_alias0), .vgo(vram_done), .vdone(sv_done), .verr(sv_err), .vact0(sv_a0), .vact1(sv_a1));
