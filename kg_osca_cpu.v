@@ -53,6 +53,12 @@ module kg_osca_cpu (
     always @(posedge clk_fast) c16_d <= clk16_raw;
     wire cen_p = clk16_raw & ~c16_d;
     wire cen_n = ~clk16_raw & c16_d;
+`ifdef KG_CPU_TV80PA
+    kg_tv80pa u_z80 (      // simulation: the same bus process on tv80_core (kg_tv80pa.v); unused ports below are left out
+        .RESET_n(reset_n), .CLK(clk_fast), .CEN_p(cen_p), .CEN_n(cen_n), .WAIT_n(cpu_wait_n), .INT_n(int_n), .NMI_n(nmi_n), .BUSRQ_n(busrq_n), .DI(d_bus),
+        .M1_n(m1_n), .MREQ_n(cpu_mreq_n), .IORQ_n(cpu_iorq_n), .RD_n(cpu_rd_n), .WR_n(cpu_wr_n), .RFSH_n(cpu_rfsh_n), .HALT_n(cpu_halt_n), .BUSAK_n(busak_n),
+        .A(cpu_a), .DO(cpu_do));
+`else
 `ifdef KG_T80PA_GHDL
     T80pa u_z80 (          // the Verilog translation made by ghdl --synth has Mode = 0 built in
 `else
@@ -62,6 +68,7 @@ module kg_osca_cpu (
         .DI(d_bus), .R800_mode(1'b0), .DIRSet(1'b0), .DIR(212'd0),
         .M1_n(m1_n), .MREQ_n(cpu_mreq_n), .IORQ_n(cpu_iorq_n), .RD_n(cpu_rd_n), .WR_n(cpu_wr_n), .RFSH_n(cpu_rfsh_n), .HALT_n(cpu_halt_n), .BUSAK_n(busak_n),
         .A(cpu_a), .DO(cpu_do), .REG());
+`endif
 `elsif KG_CPU_AZ80
     // A-Z80 (az80/): outputs with the phase relations of a real Z80 (WR# falls half a clock after MREQ# / the address), so the delay of WR# below is not used
     kg_az80 u_z80 (
@@ -102,10 +109,17 @@ module kg_osca_cpu (
     wire [15:0] cpu_a_q = cpu_a;  wire [7:0] cpu_do_q = cpu_do;
     wire cpu_mreq_q = cpu_mreq_n, cpu_iorq_q = cpu_iorq_n, cpu_rd_q = cpu_rd_n, cpu_wr_q = cpu_wr_n;
     assign a_bus      = cpu_owns ? cpu_a_q      : fpga_a;
-    assign mreq_n_bus = cpu_owns ? cpu_mreq_q   : fpga_mreq_n;
-    assign iorq_n_bus = cpu_owns ? cpu_iorq_q   : fpga_iorq_n;
+    // MREQ# / IORQ# are released 2 ticks of 96 MHz after the CPU releases them (T80pa lets them go together with WR#): the sprite register RAM is clocked
+    // by the end of the write strobe and its select includes MREQ# (the tv80 branch below holds them half a clock for the same reason)
+    reg mq_d1 = 1'b1, mq_d2 = 1'b1, iq_d1 = 1'b1, iq_d2 = 1'b1;
+    always @(posedge clk_fast) begin mq_d1 <= cpu_mreq_q; mq_d2 <= mq_d1; iq_d1 <= cpu_iorq_q; iq_d2 <= iq_d1; end
+    assign mreq_n_bus = cpu_owns ? (cpu_mreq_q & mq_d2) : fpga_mreq_n;
+    assign iorq_n_bus = cpu_owns ? (cpu_iorq_q & iq_d2) : fpga_iorq_n;
     assign rd_n_bus   = cpu_owns ? cpu_rd_q     : fpga_rd_n;
-    assign wr_n_bus   = cpu_owns ? cpu_wr_q     : fpga_wr_n;
+    // the data / select of the video RAM and palette writes are valid only some ticks after WR# falls on the board: delay the falling edge by 2 ticks of 96 MHz
+    reg wr_d1 = 1'b1, wr_d2 = 1'b1;
+    always @(posedge clk_fast) begin wr_d1 <= cpu_wr_q; wr_d2 <= wr_d1; end
+    assign wr_n_bus   = cpu_owns ? (cpu_wr_q | wr_d2) : fpga_wr_n;
 `else
     reg [15:0] cpu_a_q    = 16'h0000;
     reg [7:0]  cpu_do_q   = 8'h00;

@@ -15,7 +15,7 @@
 //   * REFRESH: a counter makes debt every REF_PERIOD clocks (max 8); a refresh is issued when idle and block_refresh = 0
 //             (block_refresh = 1 while the FPGA owns / requests the bus: audio and line copper DMA cannot be stalled);
 //             at debt 7 it is forced.
-// Latency from an address change to rd_valid: 7 clocks when idle (+ up to 7 behind a running access, + 7 behind a refresh).
+// Latency from an address change to rd_valid: 8 clocks when idle (registered address + 7; the completing read goes into the output register on its last clock), + up to 7 behind a running access, + 7 behind a refresh.  A hit: 1 clock (registered output).
 //
 // Physical notes: SDR_CLK should be a copy of clk, phase-adjusted for the board (the chip needs its data valid ~5 ns after its clock
 // edge, which at 96 MHz is marginal with a plain copy: a DCM/PLL phase-shifted clock is probably needed).  Not verified here.
@@ -31,6 +31,7 @@ module kg_osca_sdram #(
     input  wire        wr_n,
     input  wire [7:0]  wdata,
     input  wire        block_refresh,
+    input  wire        dma_owns,           // 1 while the FPGA (audio / line copper DMA) owns the bus: reads start from the bus address at once (that DMA cannot wait)
     input  wire        cap_late,           // 0: read data taken from the pins at clock 6 (access = 7 clocks); 1: from the IOB flip-flop at clock 7 (access = 8 clocks)
     input  wire [18:0] hint_addr,          // address the FPGA will read next (line copper PC + 2): read ahead in the background
     output wire [7:0]  rdata,
@@ -69,18 +70,30 @@ module kg_osca_sdram #(
     reg [15:0] e0_word = 16'd0, e1_word = 16'd0;
     reg [17:0] e0_cwa = 18'd0, e1_cwa = 18'd0;
     reg        e0_ok = 1'b0, e1_ok = 1'b0;
-    wire [17:0] t0 = hint_addr[18:1];
+    reg  [18:0] hint_q = 19'd0;                 // the line copper's PC comes from clk16 registers: registered (a read ahead does not mind the tick)
+    always @(posedge clk) hint_q <= hint_addr;
+    wire [17:0] t0 = hint_q[18:1];
     wire [17:0] t1 = t0 + 18'd1;
     wire hit_rd   = rd_ok && rd_wa == wa;
     wire hit_e0   = e0_ok && e0_cwa == wa;
     wire hit_e1   = e1_ok && e1_cwa == wa;
     wire hit_hint = hit_e0 || hit_e1;
     wire need_read = !(hit_rd || hit_hint);
-    assign rd_valid = !need_read;
+    // the state machine starts reads from a registered copy of the address (the CPU bus comes through long decoders: a read started from the
+    // bus itself could see a half-settled address on the tick after a change).  rdata / rd_valid are registers (see below).
+    reg  [18:0] addr_q = 19'd0;
+    // Both the CPU's and the DMA's address come through OSCA's decoders (the DMA's from clk16 registers): too long for one tick into sd_a.
+    always @(posedge clk) addr_q <= addr;
+    wire [17:0] wa_q = addr_q[18:1];
+    // No read ahead between the FPGA's bus request and the moment it owns the bus: the first read of the DMA (audio: data taken 12 ticks after the
+    // address change, no wait possible) would have to wait for it (seen in the simulation with the T80pa bus model).  Registered: BUSAK# comes from a T80 register.
+    reg br_q = 1'b0, dma_q = 1'b0;
+    always @(posedge clk) begin br_q <= block_refresh; dma_q <= dma_owns; end
+    wire hint_ok = !(br_q && !dma_q);
+    wire need_read_q = !((rd_ok && rd_wa == wa_q) || (e0_ok && e0_cwa == wa_q) || (e1_ok && e1_cwa == wa_q));
     wire [15:0] hint_hit_word = hit_e0 ? e0_word : e1_word;
     wire [17:0] hint_hit_cwa  = hit_e0 ? e0_cwa  : e1_cwa;
     wire [15:0] hit_word = hit_rd ? rd_word : hint_hit_word;
-    assign rdata = addr[0] ? hit_word[15:8] : hit_word[7:0];
     // what is missing and where it can go
     wire have_t0 = (rd_ok && rd_wa == t0) || (e0_ok && e0_cwa == t0) || (e1_ok && e1_cwa == t0);
     wire have_t1 = (rd_ok && rd_wa == t1) || (e0_ok && e0_cwa == t1) || (e1_ok && e1_cwa == t1);
@@ -110,6 +123,20 @@ module kg_osca_sdram #(
     always @(posedge clk) dq_iob <= sd_dq;
     wire [15:0] cap_word = cap_late ? dq_iob : sd_dq;
     wire        acc_last = cap_late ? (step == 3'd7) : (step == 3'd6);
+    // rdata is a register (the consumers are clk16 registers of the core, e.g. the audio DMA: a path from the address comparison into them is longer than
+    // one tick).  When a read of the CURRENT word completes, the word goes into it straight from the pins, on the same tick as into rd_word: the read
+    // latency does not grow.  Otherwise it follows the cached word of the current address one tick later (a hit; the consumers take the data many ticks later).
+    reg  [7:0]  rdata_q = 8'd0;
+    wire        rd_done_now = (state == ST_ACC) && (step >= 3'd4) && acc_last && !acc_wr;
+    wire [15:0] next_word = (rd_done_now && acc_wa == wa) ? cap_word : hit_word;
+    reg         valid_q = 1'b0;
+    always @(posedge clk) begin
+        rdata_q <= addr[0] ? next_word[15:8] : next_word[7:0];
+        valid_q <= (rd_done_now && acc_wa == wa) || !need_read;
+    end
+    assign rdata = rdata_q;
+    // rd_valid goes with rdata_q: valid for the address of the previous tick, and only while the address has not changed since
+    assign rd_valid = valid_q && (addr == addr_q);
     assign sd_dq = dq_oe ? dq_out : 16'bzzzzzzzzzzzzzzzz;
 
     task cmd; input [2:0] c; begin {sd_ras_n, sd_cas_n, sd_we_n} <= c; end endtask
@@ -148,7 +175,7 @@ module kg_osca_sdram #(
         end
 
         ST_IDLE: begin
-            if (pw || need_read || (ref_debt != 4'd0) || want_hint) begin
+            if (pw || need_read_q || (ref_debt != 4'd0) || (want_hint && hint_ok)) begin
                 if (pw) begin                                           // 1) write
                     cmd(CMD_ACTIVE);
                     sd_ba <= pw_addr[11:10];
@@ -157,18 +184,18 @@ module kg_osca_sdram #(
                     pw <= 1'b0; wdone <= act;
                     step <= 3'd1; state <= ST_ACC;
                 end
-                else if (ref_debt >= 4'd7 || (ref_debt != 4'd0 && !need_read && !block_refresh)) begin   // 3) refresh (forced or idle)
+                else if (ref_debt >= 4'd7 || (ref_debt != 4'd0 && !need_read_q && !block_refresh)) begin   // 3) refresh (forced or idle)
                     cmd(CMD_REFRESH);
                     ref_debt <= ref_debt - 4'd1;
                     step <= 3'd1; state <= ST_REF;
                 end
-                else if (need_read) begin                               // 2) read of the current word
+                else if (need_read_q) begin                             // 2) read of the current word (registered address)
                     cmd(CMD_ACTIVE);
-                    sd_ba <= wa[10:9]; sd_a <= {6'b000000, wa[17:11]};
-                    acc_wr <= 1'b0; acc_hint <= 1'b0; acc_wa <= wa;
+                    sd_ba <= wa_q[10:9]; sd_a <= {6'b000000, wa_q[17:11]};
+                    acc_wr <= 1'b0; acc_hint <= 1'b0; acc_wa <= wa_q;
                     step <= 3'd1; state <= ST_ACC;
                 end
-                else if (want_hint) begin                               // 4) read ahead (nothing else to do)
+                else if (want_hint && hint_ok) begin                    // 4) read ahead (nothing else to do)
                     cmd(CMD_ACTIVE);
                     sd_ba <= hint_target[10:9]; sd_a <= {6'b000000, hint_target[17:11]};
                     acc_wr <= 1'b0; acc_hint <= 1'b1; acc_hidx <= hint_victim; acc_wa <= hint_target;
@@ -190,6 +217,10 @@ module kg_osca_sdram #(
                 end
                 3'd3: sd_dqm <= 2'b11;
                 default: if (acc_last) begin
+`ifdef KG_SDRAM_LOG
+                    if (acc_wa[17:8] == 10'h030) $display("SDLOG t=%0t %s wa=%05h data=%04h odd=%b  rd_ok=%b rd_wa=%05h e0=%b/%05h e1=%b/%05h  bus addr=%05h addr_q=%05h",
+                        $time, acc_wr ? "WRITE" : acc_hint ? "HINT " : "READ ", acc_wa, acc_wr ? {acc_data, acc_data} : cap_word, acc_odd, rd_ok, rd_wa, e0_ok, e0_cwa, e1_ok, e1_cwa, addr, addr_q);
+`endif
                     if (!acc_wr && !acc_hint) begin rd_word <= cap_word; rd_wa <= acc_wa; rd_ok <= 1'b1; end
                     else if (!acc_wr && acc_hint) begin
                         if (acc_hidx == 1'b0) begin e0_word <= cap_word; e0_cwa <= acc_wa; e0_ok <= 1'b1; end

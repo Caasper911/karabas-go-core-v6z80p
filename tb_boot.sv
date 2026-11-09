@@ -511,25 +511,27 @@ module tb_boot;
                 dc_i = dut.a_bus[8:0];
                 dc_exp = dc_i[8] ? (dc_i[7:0] ^ 8'h5A) : (({dc_i[7:0], 2'b00} + dc_i[7:0]) & 8'hFF);
                 dc_chk = dc_chk + 1;
-                if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch addr=%04h got=%02h exp=%02h", dut.a_bus, dut.sys_rdata, dc_exp); end
+                if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch t=%0t addr=%04h got=%02h exp=%02h  sdram rd_ok=%b rd_wa=%05h rd_word=%04h e0=%b/%05h/%04h e1=%b/%05h/%04h rd_valid=%b", $time, dut.a_bus, dut.sys_rdata, dc_exp, dut.sdram.rd_ok, dut.sdram.rd_wa, dut.sdram.rd_word, dut.sdram.e0_ok, dut.sdram.e0_cwa, dut.sdram.e0_word, dut.sdram.e1_ok, dut.sdram.e1_cwa, dut.sdram.e1_word, dut.sdram.rd_valid); end
             end
             dc_prev <= dut.a_bus;
         end else dc_prev <= 16'hFFFF;
         if (ms >= 12) begin w_cyc = w_cyc + 1; if (!dut.sdram_wait_n) w_cpu = w_cpu + 1; end
     end
     // latency from a system RAM address change (FPGA owns the bus) to rd_valid, in clk_mem ticks
-    reg [18:0] dl_a = 0; integer dl_t = 0; reg dl_run = 0;
+    reg [18:0] dl_a = 0; integer dl_t = 0; reg dl_run = 0; reg [6:0] dl_st = 0; reg [17:0] dl_wa = 0; reg dl_pw = 0, dl_rd = 0; time dl_tt = 0; integer dl_pr = 0; integer dl_h [0:15]; integer dl_i; initial for (dl_i = 0; dl_i < 16; dl_i = dl_i + 1) dl_h[dl_i] = 0;
     always @(posedge clk_mem) if (ms >= 12) begin
         dl_a <= dut.sys_addr_m;
-        if (!dut.busak_n && dut.sys_addr_m != dl_a && dut.sys_addr_m >= 19'h06000 && dut.sys_addr_m < 19'h06200) begin dl_run <= 1'b1; dl_t <= 1; end
+        if (!dut.busak_n && dut.sys_addr_m != dl_a && dut.sys_addr_m >= 19'h06000 && dut.sys_addr_m < 19'h06200) begin dl_run <= 1'b1; dl_t <= 1;
+            dl_st <= {dut.sdram.state, dut.sdram.step, dut.sdram.acc_wr, dut.sdram.acc_hint}; dl_wa <= dut.sdram.acc_wa; dl_pw <= dut.sdram.pw; dl_rd <= dut.sdram.need_read_q; dl_tt <= $time; end
         else if (dl_run) begin
-            if (dut.sdram_rd_valid || dut.busak_n) begin dl_run <= 1'b0; dl_n = dl_n + 1; if (dl_t > dl_max) dl_max = dl_t; if (dl_t > 11) dl_over = dl_over + 1; end
+            if (dut.sdram_rd_valid || dut.busak_n) begin dl_run <= 1'b0; dl_n = dl_n + 1; dl_h[dl_t > 15 ? 15 : dl_t] = dl_h[dl_t > 15 ? 15 : dl_t] + 1; if (dl_t >= 10 && dl_pr < 12) begin dl_pr = dl_pr + 1; $display("DMASLOW t=%0t lat=%0d addr=%05h  at the change: state=%0d step=%0d acc_wr=%b acc_hint=%b acc_wa=%05h pw=%b need_read_q=%b", dl_tt, dl_t, dl_a, dl_st[6:5], dl_st[4:2], dl_st[1], dl_st[0], dl_wa, dl_pw, dl_rd); end if (dl_t > dl_max) dl_max = dl_t; if (dl_t > 11) dl_over = dl_over + 1; end
             else dl_t <= dl_t + 1;
         end
     end
     task sdram_report; begin
         $display("DMACHK: %0d DMA reads checked against the expected sample, %0d wrong", dc_chk, dc_err);
         $display("DMALAT: %0d DMA address changes, max latency to rd_valid = %0d ticks, above 11 ticks: %0d", dl_n, dl_max, dl_over);
+        $display("DMALATH ticks 0..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", dl_h[0], dl_h[1], dl_h[2], dl_h[3], dl_h[4], dl_h[5], dl_h[6], dl_h[7], dl_h[8], dl_h[9], dl_h[10], dl_h[11], dl_h[12], dl_h[13], dl_h[14], dl_h[15]);
         $display("WAITCNT: CPU WAIT inserted in %0d of %0d clk16 cycles (%0d ppm)", w_cpu, w_cyc, (w_cpu * 1000000) / (w_cyc + 1));
     end endtask
 

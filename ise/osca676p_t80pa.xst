@@ -6,7 +6,7 @@ run
 -ofmt NGC
 -p xc6slx25-2-ftg256
 -vlgincdir {"../modules/rtl/mcu" "../tv80"}
--define {KG_CPU_T80PA}
+-define {KG_CPU_T80PA KG_PLL16 KG_NO_MEMTEST}
 -top karabas_go_osca_top
 -opt_mode Speed
 -opt_level 2

@@ -140,10 +140,7 @@ INST "soc/mem/mwr0_n*" IOB = TRUE;
 
 # ---- clocks of the design (clk96 = DCM_CLKGEN 50 MHz * 48 / 25 through a BUFG, clk16 = the memory wrapper's divide-by-6 counter through a BUFG)
 # Check the net names in the .ngd / .syr after the first ngdbuild: if XST renamed a net, constrain the name it printed.
-NET "clk96" TNM_NET = "TNM_clk96";
-TIMESPEC "TS_clk96" = PERIOD "TNM_clk96" 10.417 ns HIGH 50%;
-NET "clk16" TNM_NET = "TNM_clk16";
-TIMESPEC "TS_clk16" = PERIOD "TNM_clk16" 62.5 ns HIGH 50%;
+# clk96 and clk16 are the two outputs of one PLL (karabas_go_osca_top.v): ISE derives both periods and their phase from TS_CLK_50MHZ through the DCM and the PLL
 
 # ---- false paths (kg_osca_soc.v: sys_rdata is kept for this).  System RAM read data reaches d_bus only while the CPU reads system RAM;
 #      the video RAM write data (core buft8 on d_bus) is used only for CPU accesses to video RAM, which are never system RAM reads.
@@ -178,9 +175,68 @@ INST "ld_act_r*"  TNM = "GRP_CHK";
 INST "ld_addr_r*" TNM = "GRP_CHK";
 INST "ld_data_r*" TNM = "GRP_CHK";
 INST "ld_wr_r*"   TNM = "GRP_CHK";
+# the loader / self test signals reach OSCA's clk16 registers only while OSCA is held in reset (static while it runs)
+TIMESPEC "TS_chk_c16" = FROM "GRP_CHK" TO "TNM_c16" TIG;
 
-# T80pa runs on clk96 but advances only on CEN_p / CEN_n pulses (one per Z80 clock = 6 ticks): its internal paths are multi-cycle (62.5 ns).  Paths to / from the rest of the design keep the 10.4 ns period.
-INST "soc/cpu/u_z80/*" TNM = "GRP_T80";
+# T80pa runs on clk96.  Its core (u0) is clock-enabled by CEN = CEN_p & ~CEN_pol, once per Z80 clock (6 ticks): core-to-core paths are multi-cycle (62.5 ns).
+# The bus registers of the wrapper (WR_n, RD_n, MREQ_n, IORQ_n, DI_Reg, Wait_s, IntCycleD_n) change at CEN_n, half a Z80 clock (3 ticks) after the core: 31.2 ns both ways.
+# CEN_pol is in no group: it gates the core's clock enable on the next tick and must meet the 10.4 ns period (an earlier constraint covered all of u_z80 with 62.5 ns).
+INST "soc/cpu/u_z80/u0/*" TNM = "GRP_T80";
+INST "soc/cpu/u_z80/WR_n*" TNM = "GRP_T80W";
+INST "soc/cpu/u_z80/RD_n*" TNM = "GRP_T80W";
+INST "soc/cpu/u_z80/MREQ_n*" TNM = "GRP_T80W";
+INST "soc/cpu/u_z80/IORQ_n*" TNM = "GRP_T80W";
+INST "soc/cpu/u_z80/DI_Reg*" TNM = "GRP_T80W";
+INST "soc/cpu/u_z80/Wait_s*" TNM = "GRP_T80W";
+INST "soc/cpu/u_z80/IntCycleD_n*" TNM = "GRP_T80W";
 TIMESPEC "TS_t80_internal" = FROM "GRP_T80" TO "GRP_T80" 62.5 ns;
-TIMESPEC "TS_t80_sdram" = FROM "GRP_T80" TO "GRP_SDRAM" 31.2 ns;      # the address / control outputs of T80pa change at most every 6 ticks of clk96
-TIMESPEC "TS_t80_mem"   = FROM "GRP_T80" TO "GRP_MEM"   31.2 ns;
+TIMESPEC "TS_t80_core2bus" = FROM "GRP_T80" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_t80_bus2core" = FROM "GRP_T80W" TO "GRP_T80" 31.2 ns;
+# From T80pa (clk96) to OSCA's registers on clk16: the phases of T80pa are fixed against clk16 (CEN_p = the tick after the clk16 rising edge,
+# CEN_n = the tick after the falling edge; kg_osca_cpu.v).  The core registers change only at CEN_p: 5 ticks before the next clk16 edge.  The bus
+# registers change at CEN_p or CEN_n: at least 2 ticks.  The delayed copies in kg_osca_cpu (mq_d*, iq_d*, wr_d*) follow 2 ticks later: at least 3 ticks.
+NET "clk16" TNM_NET = "TNM_c16";
+INST "soc/cpu/mq_d*" TNM = "GRP_T80D";
+INST "soc/cpu/iq_d*" TNM = "GRP_T80D";
+INST "soc/cpu/wr_d*" TNM = "GRP_T80D";
+TIMESPEC "TS_t80core_c16" = FROM "GRP_T80"  TO "TNM_c16" 52.0 ns;
+TIMESPEC "TS_t80bus_c16"  = FROM "GRP_T80W" TO "TNM_c16" 20.8 ns;
+TIMESPEC "TS_t80dly_c16"  = FROM "GRP_T80D" TO "TNM_c16" 31.2 ns;
+
+# kg_osca_mem: these registers are loaded only at tick 3 (slot B) and tick 5 (slot C), from inputs that change at ticks 0, 1 or 3 (measured,
+# see kg_osca_mem.v): at least 2 ticks.  The SRAM address (ma) is also loaded at tick 1 with the display fetch address (one tick after the
+# clk16 edge, a real one-tick path), so for ma only the sources that never feed slot A get 2 ticks: the sprite engine and the CPU.
+INST "soc/mem/md_o*"   TNM = "GRP_MEMBC";
+INST "soc/mem/md_oe*"  TNM = "GRP_MEMBC";
+INST "soc/mem/mrd0_n*" TNM = "GRP_MEMBC";
+INST "soc/mem/wr_pre*" TNM = "GRP_MEMBC";
+INST "soc/mem/pend_v*" TNM = "GRP_MEMBC";
+INST "soc/mem/cs_*"    TNM = "GRP_MEMBC";
+INST "soc/mem/c2_*"    TNM = "GRP_MEMBC";
+INST "soc/mem/ma_*"    TNM = "GRP_MEMMA";
+INST "soc/core/XLXI_2849/*" TNM = "GRP_SPRENG";
+TIMESPEC "TS_c16_membc"   = FROM "TNM_c16"    TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_t80_membc"   = FROM "GRP_T80"    TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_t80w_membc"  = FROM "GRP_T80W"   TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_t80d_membc"  = FROM "GRP_T80D"   TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_spr_memma"   = FROM "GRP_SPRENG" TO "GRP_MEMMA" 20.8 ns;
+TIMESPEC "TS_t80_memma"   = FROM "GRP_T80"    TO "GRP_MEMMA" 20.8 ns;
+TIMESPEC "TS_t80w_memma"  = FROM "GRP_T80W"   TO "GRP_MEMMA" 20.8 ns;
+TIMESPEC "TS_t80d_memma"  = FROM "GRP_T80D"   TO "GRP_MEMMA" 20.8 ns;
+# The maths assist table RAM (written by the CPU on clk16, read asynchronously by the CPU address): its write clock -> the CPU's
+# registers is not a real one-tick path (the CPU cannot fetch from it on the tick it writes it); the read path from the CPU address is covered above.
+INST "soc/core/XLXI_3644/*" TNM = "GRP_MATHS";
+TIMESPEC "TS_maths_t80" = FROM "GRP_MATHS" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_maths_sdram" = FROM "GRP_MATHS" TO "GRP_SDRAM" 31.2 ns;   # (CPU writes carry the CPU's own data, not the table's)
+INST "soc/core/pal_*" TNM = "GRP_PALPIPE";
+TIMESPEC "TS_maths_t80w"  = FROM "GRP_MATHS" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_maths_pal"   = FROM "GRP_MATHS" TO "GRP_PALPIPE" 31.2 ns;
+# The audio DMA address reaches the bus only while the FPGA owns it (the CPU is in BUSACK and fetches no opcode): to the T80 core (the opcode path
+# DInst -> IR) it is no one-tick path.  CPU reads of the sound registers go through DI_Reg (GRP_T80W), not covered here.
+INST "soc/core/XLXI_3483/*" TNM = "GRP_SOUND";
+TIMESPEC "TS_sound_t80" = FROM "GRP_SOUND" TO "GRP_T80" 31.2 ns;
+# The SPI receive register is read with IN (through DI_Reg), never fetched as an opcode: no one-tick path into the T80 core
+INST "soc/core/XLXI_2015/*" TNM = "GRP_SPI";
+TIMESPEC "TS_spi_t80" = FROM "GRP_SPI" TO "GRP_T80" 31.2 ns;
+# No relaxation from T80pa to the SDRAM controller / the SRAM wrapper: both look at the CPU bus on every tick of clk96 (address change detection, slot
+# capture), a path longer than one tick lets them see a half-settled address or strobe.  (TS_t80_sdram / TS_t80_mem = 31.2 ns were removed.)

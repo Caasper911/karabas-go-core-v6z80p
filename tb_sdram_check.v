@@ -14,7 +14,7 @@ module tb_sdram_check;
     wire [7:0] wdata = (corrupt >= 0 && addr == corrupt && !chk_cap) ? (wdata0 ^ 8'h10) : wdata0;
     wire [7:0] rdata; wire rd_valid, wr_pending, init_done;
     wire [1:0] ba, dqm; wire [12:0] sa; wire ras_n, cas_n, we_n; wire [15:0] dq;
-    kg_osca_sdram #(.INIT_WAIT(16'd200)) dut (.clk(clk), .reset(reset0 | chk_rst), .addr(addr), .cs_n(cs_n), .wr_n(wr_n), .wdata(wdata),
+    kg_osca_sdram #(.INIT_WAIT(16'd200)) dut (.clk(clk), .reset(reset0 | chk_rst), .dma_owns(1'b0), .addr(addr), .cs_n(cs_n), .wr_n(wr_n), .wdata(wdata),
         .cap_late(chk_cap), .block_refresh(1'b0), .hint_addr(19'd0), .rdata(rdata), .rd_valid(rd_valid), .wr_pending(wr_pending), .init_done(init_done),
         .sd_ba(ba), .sd_a(sa), .sd_dqm(dqm), .sd_ras_n(ras_n), .sd_cas_n(cas_n), .sd_we_n(we_n), .sd_dq(dq));
     tb_sdram_model sdram (.clk(clk), .ba(ba), .a(sa), .dqm(dqm), .ras_n(ras_n), .cas_n(cas_n), .we_n(we_n), .dq(dq));

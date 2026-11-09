@@ -71,6 +71,7 @@ module kg_osca_soc (
     output wire [32:0] dbg,
     output wire [7:0]  chk_rdata,      // system RAM read data / valid (self test of the SDRAM through the loader port)
     output wire        chk_rdvalid,
+    output wire [63:0] dbg8,
     input  wire        dbg_fixpal,      // fixed palette test (see osca_core)
     input  wire [8:0]  dbg_paddr,       // palette probe (see osca_core)
     output wire [15:0] dbg_pdata,
@@ -107,7 +108,7 @@ module kg_osca_soc (
 
     osca_core core (
         .clk_fast(clk_mem),
-        .dbg_core(dbg3), .dbg_vr(dbg5), .dbg_wce(dbg6), .dbg_bus(dbg7), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata), .dbg_fixpal(dbg_fixpal),
+        .dbg_core(dbg3), .dbg_vr(dbg5), .dbg_wce(dbg6), .dbg_bus(dbg7), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata), .dbg_fixpal(dbg_fixpal), .dbg_pwlog(dbg8),
         .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .vram_addr_out(vram_addr_out),
         .spr_wdata(spr_wdata), .spr_wdata_oe(spr_wdata_oe), .spr_rdata(spr_rdata),
         .spr_ram_wr(spr_ram_wr), .spr_ram_rd(spr_ram_rd), .spr_addrbus(spr_addrbus),
@@ -151,13 +152,19 @@ module kg_osca_soc (
         .a_bus(a_bus), .mreq_n_bus(mreq_n_bus), .iorq_n_bus(iorq_n_bus),
         .rd_n_bus(rd_n_bus), .wr_n_bus(wr_n_bus), .d_bus(d_bus));
 
+`ifdef KG_NO_MEMTEST
+    // the SRAM / video RAM self tests are left out (their multiplexers sit on the one-tick display fetch path into the SRAM address)
+    wire v_en_i = 1'b0, t_en_i = 1'b0;
+`else
+    wire v_en_i = v_en, t_en_i = t_en;
+`endif
     kg_osca_mem mem (
-        .clk_mem(clk_mem), .clk16(clk16_gen),
-        .vram_addr(v_en ? v_addr : vram_addr_out), .vram_wr_n(v_en ? v_wr_n : vram_wr), .vram_wdata(v_en ? v_wd : vram_wdata),
+        .clk_mem(clk_mem), .clk16(clk16_gen), .clk16_ref(clk16),
+        .vram_addr(v_en_i ? v_addr : vram_addr_out), .vram_wr_n(v_en_i ? v_wr_n : vram_wr), .vram_wdata(v_en_i ? v_wd : vram_wdata),
         .vram_rdata1(vram_rdata), .vram_rdata2(vram_rdata2),
         .spr_addr(spr_addrbus),    .spr_wr_n(spr_ram_wr), .spr_wdata(spr_wdata), .spr_rdata(spr_rdata),
         .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(md_i), .mwr_n(mwr_n), .mrd_n(mrd_n),
-        .t_en(t_en), .t_ma(t_ma), .t_md(t_md), .t_oe(t_oe), .t_wr_n(t_wr_n), .t_rd_n(t_rd_n));
+        .t_en(t_en_i), .t_ma(t_ma), .t_md(t_md), .t_oe(t_oe), .t_wr_n(t_wr_n), .t_rd_n(t_rd_n));
 
     // System RAM on the SDRAM.  The MCU loader owns the port while ld_active.  (Define KG_SYSRAM_MODEL for the zero-latency model.)
     wire [18:0] sys_addr_m = ld_active ? ld_addr[18:0] : {system_ram_a18, system_ram_a17, system_ram_a16, system_ram_a15, system_ram_a14, a_bus[13:0]};
@@ -174,7 +181,7 @@ module kg_osca_soc (
     kg_osca_sdram sdram (
         .clk(clk_mem), .reset(sdram_reset),
         .addr(sys_addr_m), .cs_n(sys_cs_m), .wr_n(sys_wr_m), .wdata(sys_wd_m),
-        .block_refresh(~z80_busreq | ~busak_n), .cap_late(sdram_cap_late),
+        .block_refresh(~z80_busreq | ~busak_n), .dma_owns(~busak_n), .cap_late(sdram_cap_late),
         .hint_addr(linecop_pc_o),                        // the line copper reads its list sequentially: keep its word and the next one loaded         // the DMA cannot be stalled: no refresh while the FPGA asks for / owns the bus
         .rdata(sys_rdata), .rd_valid(sdram_rd_valid), .wr_pending(sdram_wr_pending), .init_done(sdram_init_done),
         .sd_ba(sd_ba), .sd_a(sd_a), .sd_dqm(sd_dqm), .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_dq(sd_dq));

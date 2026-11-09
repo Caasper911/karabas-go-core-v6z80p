@@ -4,7 +4,7 @@ module tb_vram_full;
     reg clk96 = 0; always #5.2083 clk96 = ~clk96;
     wire clk16;
     wire [20:0] ma; wire [15:0] md_o; wire md_oe; wire [1:0] mwr_n, mrd_n; wire [7:0] r1, r2;
-    wire [18:0] t_addr; wire t_wr_n; wire [7:0] t_wd; wire vrun, vdone; wire [15:0] es, er; wire [7:0] a0, a1;
+    wire [18:0] t_addr; wire t_wr_n; wire [7:0] t_wd; wire vrun, vdone; wire [15:0] es, er; wire [63:0] a0;
     reg [7:0] sram0 [0:2097151];
     wire [15:0] md = md_oe ? md_o : {8'hzz, mrd_n[0] ? 8'hzz : sram0[ma]};
     always @(posedge mwr_n[0]) sram0[ma] <= md[7:0];
@@ -17,9 +17,9 @@ module tb_vram_full;
     kg_sram_test st (.clk(clk96), .go(go), .run(srun), .ma(sma), .md(smd), .oe(soe), .wr_n(swr), .rd_n(srd), .md_i(md), .done(sdone),
         .dmask0(dm0), .dmask1(dm1), .amask(amask), .alias0(alias0), .vgo(vdone), .vdone(sv_done), .verr(sv_err), .vact0(sv0), .vact1(sv1));
     kg_vram_test vt (.clk16(clk16), .go(sdone), .run(vrun), .addr(t_addr), .wr_n(t_wr_n), .wdata(t_wd), .rdata1(r1), .rdata2(r2), .done(vdone),
-        .err_s(es), .err_r(er), .act0(a0), .act1(a1));
+        .err_s(es), .err_r(er), .act(a0));
     initial begin #1000 go = 1; wait (sv_done); #1000;
-        $display("CHAIN: sram basic dmask=%b/%b amask=%0d alias0=%b | vram stream errors=%0d rdata2 errors=%0d first=%02h %02h | direct verify errors=%0d first=%02h %02h",
-            dm0, dm1, amask, alias0, es, er, a0, a1, sv_err, sv0, sv1);
+        $display("CHAIN: sram basic dmask=%b/%b amask=%0d alias0=%b | vram stream errors=%0d rdata2 errors=%0d first=%h | direct verify errors=%0d first=%02h %02h",
+            dm0, dm1, amask, alias0, es, er, a0, sv_err, sv0, sv1);
         $finish; end
 endmodule

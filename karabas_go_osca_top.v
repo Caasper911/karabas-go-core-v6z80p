@@ -44,12 +44,25 @@ module karabas_go_osca_top (
     ) u_dcm (
         .CLKIN(CLK_50MHZ), .CLKFX(clk96_raw), .CLKFX180(), .CLKFXDV(), .LOCKED(dcm_locked), .STATUS(),
         .PROGCLK(1'b0), .PROGDATA(1'b0), .PROGEN(1'b0), .PROGDONE(), .FREEZEDCM(1'b0), .RST(1'b0));
-    BUFG u_bufg96 (.I(clk96_raw), .O(clk96));
-    BUFG u_bufg16 (.I(clk16_gen), .O(clk16));        // 16 MHz made by kg_osca_mem's tick counter
+    // clk96 and clk16 both come from one PLL (VCO 576 MHz = 96 MHz * 6): their rising edges coincide, as in the simulation.  (clk16 used to be the
+    // memory wrapper's divide-by-6 counter through a BUFG: its edges came ~half a 96 MHz period late, so every clk16 <-> clk96 transfer on the
+    // board was shifted by a tick against the simulation, and ISE did not analyse these paths.)  kg_osca_mem (KG_PLL16) aligns its tick counter to clk16.
+    wire pll_fb, clk96_pll, clk16_pll, pll_locked;
+    PLL_BASE #(
+        .BANDWIDTH("OPTIMIZED"), .CLK_FEEDBACK("CLKFBOUT"), .COMPENSATION("INTERNAL"),
+        .DIVCLK_DIVIDE(1), .CLKFBOUT_MULT(6), .CLKFBOUT_PHASE(0.0), .CLKIN_PERIOD(10.417),
+        .CLKOUT0_DIVIDE(6),  .CLKOUT0_PHASE(0.0), .CLKOUT0_DUTY_CYCLE(0.5),
+        .CLKOUT1_DIVIDE(36), .CLKOUT1_PHASE(0.0), .CLKOUT1_DUTY_CYCLE(0.5),
+        .REF_JITTER(0.1)
+    ) u_pll (
+        .CLKIN(clk96_raw), .CLKFBIN(pll_fb), .CLKFBOUT(pll_fb), .RST(~dcm_locked), .LOCKED(pll_locked),
+        .CLKOUT0(clk96_pll), .CLKOUT1(clk16_pll), .CLKOUT2(), .CLKOUT3(), .CLKOUT4(), .CLKOUT5());
+    BUFG u_bufg96 (.I(clk96_pll), .O(clk96));
+    BUFG u_bufg16 (.I(clk16_pll), .O(clk16));
 
     // reset: keep OSCA in reset until the DCM has locked (jumper_reset = 0 requests a reset)
     reg [3:0] lock_sr = 4'h0;
-    always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked};
+    always @(posedge clk16) lock_sr <= {lock_sr[2:0], dcm_locked & pll_locked};
     wire run = lock_sr[3];
     wire        romloader_active;
     reg [15:0] f_a = 16'd0;  reg [7:0] f_d = 8'd0;                 // address / opcode of the current opcode fetch
@@ -73,7 +86,7 @@ module karabas_go_osca_top (
     reg  sd_init_ever = 1'b0;                       // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
     always @(posedge clk96) if (sd_init) sd_init_ever <= 1'b1;
     kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
-        .CLK(clk96), .N_RESET(dcm_locked & sd_init_ever),   // the loader must not start before the SDRAM is initialised
+        .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever),   // the loader must not start before the SDRAM is initialised
         .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
         .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(1'b1), .MCU_BURST_READY(),
         .MS_X(), .MS_Y(), .MS_B(unused_ms_b), .MS_Z(), .MS_UPD(),
@@ -113,12 +126,28 @@ module karabas_go_osca_top (
         ld_wr_r   <= chk_run ? chk_wr : rom_wr;
     end
     wire [32:0] dbg;
-    wire [26:0] dbg2;  wire [29:0] dbg3;  wire [1:0] dbg4;  wire [31:0] dbg5;  wire [4:0] dbg6;  wire [19:0] dbg7;  wire [15:0] pal_pdata;  reg [8:0] pal_probe = 9'd1;     // probe palette index 1 (FLOS writes FF FF there), alternating with index 200 (00 00)
-    reg [27:0] pal_alt = 28'd0;  reg [15:0] pal_v1 = 16'd0, pal_v2 = 16'd0;
+    wire [26:0] dbg2;  wire [29:0] dbg3;  wire [1:0] dbg4;  wire [31:0] dbg5;  wire [4:0] dbg6;  wire [19:0] dbg7;  wire [63:0] dbg8;  wire [15:0] pal_pdata;  reg [8:0] pal_probe = 9'd1;     // probe palette index 1 (FLOS writes FF FF there), alternating with index 200 (00 00)
+    // palette entries 10..1F (FLOS's 16 colours) read through the probe port and compared with the values from the simulation (build/palrun, KG_PALLOG):
+    // one entry per 2^20 ticks of 96 MHz; pmask bit 15 = entry 10 ... bit 0 = entry 1F differs; p17 / p18 = entries 17 (yellow, text) and 18 (white)
+    reg [27:0] pal_alt = 28'd0;  reg [15:0] pmask = 16'd0, p17 = 16'd0, p18 = 16'd0, pfirst = 16'd0;  reg [3:0] pfirst_i = 4'd0;  reg pfound = 1'b0;
+    wire [3:0] pk = pal_alt[23:20];
+    reg  [15:0] pexp;
+    always @(*) case (pk)
+        4'h0: pexp = 16'h0007; 4'h1: pexp = 16'h0000; 4'h2: pexp = 16'h000f; 4'h3: pexp = 16'h0f00;
+        4'h4: pexp = 16'h0f0f; 4'h5: pexp = 16'h00f0; 4'h6: pexp = 16'h00ff; 4'h7: pexp = 16'h0ff0;
+        4'h8: pexp = 16'h0fff; 4'h9: pexp = 16'h0555; 4'ha: pexp = 16'h0999; 4'hb: pexp = 16'h0ccc;
+        4'hc: pexp = 16'h0f71; 4'hd: pexp = 16'h007f; 4'he: pexp = 16'h0df8; default: pexp = 16'h0840;
+    endcase
     always @(posedge clk96) begin
         pal_alt <= pal_alt + 28'd1;
-        pal_probe <= pal_alt[26] ? 9'd200 : 9'd1;
-        if (pal_alt[26:0] == 27'h7ff_fff0) begin if (pal_alt[26]) pal_v2 <= pal_pdata; else pal_v1 <= pal_pdata; end
+        pal_probe <= {5'd1, pk};
+        if (pal_alt[19:0] == 20'hf_fff0) begin
+            pmask[4'd15 - pk] <= (pal_pdata != pexp);
+            if (pk == 4'h7) p17 <= pal_pdata;
+            if (pk == 4'h8) p18 <= pal_pdata;
+            if ((pal_pdata != pexp) && !pfound) begin pfound <= 1'b1; pfirst <= pal_pdata; pfirst_i <= pk; end
+            if (pk == 4'hf) pfound <= 1'b0;
+        end
     end
     wire [7:0] chk_rdata;  wire chk_rdvalid;
     kg_osca_soc soc (
@@ -140,9 +169,9 @@ module karabas_go_osca_top (
         .jumper_nmi(1'b1), .jumper_reset(run & ~load_s[1] & init_s[1]), .jumper_vga(1'b0),   // 0 = VGA video mode
         .expansion_pin_a(), .expansion_pin_b(),
         .system_reset_out(system_reset_out),
-        .sdram_reset(~dcm_locked | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
+        .sdram_reset(~(dcm_locked & pll_locked) | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
         .sd_ba(SDR_BA), .sd_a(SDR_A), .sd_dqm(SDR_DQM), .sd_ras_n(SDR_RAS_N), .sd_cas_n(SDR_CAS_N), .sd_we_n(SDR_WE_N), .sd_dq(SDR_DQ),
-        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg5(dbg5), .dbg6(dbg6), .dbg7(dbg7), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_hold[30]), .dbg_pdata(pal_pdata),
+        .dbg(dbg), .chk_rdata(chk_rdata), .chk_rdvalid(chk_rdvalid), .dbg2(dbg2), .dbg3(dbg3), .dbg4(dbg4), .dbg5(dbg5), .dbg6(dbg6), .dbg7(dbg7), .dbg8(dbg8), .dbg_paddr(pal_probe), .dbg_fixpal(dbg_hold[30]), .dbg_pdata(pal_pdata),
         .v_en(vram_run), .v_addr(v_addr), .v_wr_n(v_wr_n), .v_wd(v_wd), .t_en(sram_run), .t_ma(s_ma), .t_md(s_md), .t_oe(s_oe), .t_wr_n(s_wr_n), .t_rd_n(s_rd_n));
 
     // SDRAM clock: a copy of clk96 (a phase-shifted copy will probably be needed on the board, see kg_osca_sdram.v)
@@ -265,23 +294,20 @@ module karabas_go_osca_top (
             end
         end
     end
-    // every opcode fetch inside the boot image is compared with the copy of the image kept for the SDRAM test (6 ticks after the fetch ended)
-    reg        mm_pend = 1'b0;  reg [15:0] mm_cnt = 16'd0, mm_addr = 16'd0;  reg [7:0] mm_exp = 8'd0, mm_act = 8'd0;  reg [7:0] mm_d = 8'd0;  reg [15:0] mm_a = 16'd0;
-    always @(posedge clk16) begin
-        if (!fetch && fetch_q) begin mm_pend <= 1'b1; mm_d <= f_d; mm_a <= f_a; end
-        else if (mm_pend) begin
-            mm_pend <= 1'b0;
-            if (mm_a >= 16'h1000 && mm_a < 16'd20142 && chk_fexp !== mm_d) begin
-                if (mm_cnt != 16'hffff) mm_cnt <= mm_cnt + 16'd1;
-                if (mm_cnt == 16'd0) begin mm_addr <= mm_a; mm_exp <= chk_fexp; mm_act <= mm_d; end
-            end
+    // the bus as the core's registers see it during CPU writes (96 MHz pipeline): every data / address bit that was ever 1 at the start of a write strobe, and the last write
+    reg [19:0] bw1 = 20'd0, bw2 = 20'd0, bw3 = 20'd0;  reg [10:0] w_addr = 11'd0, a_or = 11'd0, w_addr_e = 11'd0;  reg [7:0] w_data = 8'd0, d_or = 8'd0, d_and = 8'hff, w_data_e = 8'd0;
+    always @(posedge clk96) begin
+        bw1 <= dbg7;  bw2 <= bw1;  bw3 <= bw2;
+        if (bw2[19] != bw1[19]) begin                       // the write strobe of the core changed (either edge): the bus two ticks earlier
+            if (!bw1[19]) begin w_addr <= bw3[18:8]; w_data <= bw3[7:0]; a_or <= a_or | bw3[18:8]; d_or <= d_or | bw3[7:0]; end   // falling edge: start of a write
+            else          begin w_addr_e <= bw3[18:8]; w_data_e <= bw3[7:0]; end                                                      // rising edge: end of a write
         end
     end
     kg_dbg_video u_dbg (.clk16(clk16),
-        .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked}), .flags2(f2),
+        .flags({wr_seen, hb27[26], osca_run, ld_bytes >= 16'd20142, ld_done, ld_seen, sd_init, dcm_locked & pll_locked}), .flags2(f2),
         .flags3({chk_cap, chk_pol, chk_done, chk_done & (chk_efin == 16'd0), ~chk_tmo, chk_mdone, chk_seen & 1'b1, 1'b1}),
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(dbg5[15:0]), .first_ea(dbg5[31:16]),
-        .m_hs(mm_addr), .m_lines({mm_exp, mm_act}), .m_nb(m_nb), .m_col(mm_cnt),
+        .m_hs(pmask), .m_lines(p17), .m_nb(p18), .m_col({pfirst_i, pfirst[11:0]}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     wire show_dbg = ~dbg_hold[29];   // bring-up: the status screen and OSCA's own picture alternate (5.6 s each) while OSCA runs after OSCA is released (bring-up)
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and

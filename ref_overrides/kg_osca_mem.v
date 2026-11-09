@@ -3,6 +3,7 @@
 module kg_osca_mem #(parameter N = 6, parameter LAT = 2, parameter SLOT_A = 1, parameter SLOT_B = 3, parameter SLOT_C = 5)(
     input  wire        clk_mem,
     output reg         clk16 = 1'b0,
+    input  wire        clk16_ref,              // unused (the board aligns the tick counter to the PLL clk16, see kg_osca_mem.v)
     input  wire [18:0] vram_addr, input wire vram_wr_n, input wire [7:0] vram_wdata,
     output wire [7:0]  vram_rdata1, output wire [7:0] vram_rdata2,
     input  wire [16:0] spr_addr,  input wire spr_wr_n,  input wire [7:0] spr_wdata, output wire [7:0] spr_rdata,

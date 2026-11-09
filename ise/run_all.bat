@@ -14,7 +14,7 @@ copy /y osca676p.ucf work\osca676p.ucf > nul
 cd work
 ngdbuild -intstyle ise -dd _ngo -nt timestamp -uc osca676p.ucf -p xc6slx25-ftg256-2 osca676p.ngc osca676p.ngd > impl_console.log 2>&1
 if not exist osca676p.ngd (echo BUILD FAILED at ngdbuild & exit /b 2)
-map -intstyle ise -p xc6slx25-ftg256-2 -w -logic_opt off -ol high -xe n -t 2 -register_duplication off -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off -o osca676p_map.ncd osca676p.ngd osca676p.pcf >> impl_console.log 2>&1
+map -intstyle ise -p xc6slx25-ftg256-2 -w -logic_opt on -ol high -xe n -t 2 -register_duplication on -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off -o osca676p_map.ncd osca676p.ngd osca676p.pcf >> impl_console.log 2>&1
 if not exist osca676p_map.ncd (echo BUILD FAILED at map: see ise\work\impl_console.log & exit /b 3)
 par -w -intstyle ise -ol high -xe n -mt 4 osca676p_map.ncd osca676p.ncd osca676p.pcf >> impl_console.log 2>&1
 if not exist osca676p.ncd (echo BUILD FAILED at par: see ise\work\impl_console.log & exit /b 4)

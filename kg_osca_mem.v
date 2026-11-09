@@ -25,6 +25,7 @@ module kg_osca_mem #(
 )(
     input  wire        clk_mem,
     output reg         clk16 = 1'b0,
+    input  wire        clk16_ref,              // KG_PLL16: the board's clk16 from the PLL; the tick counter follows it (unused in simulation)
 
     input  wire [18:0] vram_addr,
     input  wire        vram_wr_n,
@@ -52,7 +53,20 @@ module kg_osca_mem #(
     input  wire [1:0]  t_rd_n
 );
     reg  [2:0] tick = 3'd0;
-    wire [2:0] tick_n = (tick == N-1) ? 3'd0 : tick + 3'd1;
+    wire [2:0] tick_inc = (tick == N-1) ? 3'd0 : tick + 3'd1;
+`ifdef KG_PLL16
+    // clk16 comes from the PLL with its rising edges on clk_mem rising edges: a toggle on clk16 is sampled on the clk_mem FALLING edge (half a
+    // period away from both clocks' edges) and the counter is set to tick 1 on the clk_mem edge that follows the clk16 edge.
+    reg t16 = 1'b0;
+    always @(posedge clk16_ref) t16 <= ~t16;
+    // (the comparison uses two rising-edge registers: the falling-edge register feeds nothing but them, half a period is enough for that)
+    reg t16_n = 1'b0, t16_p = 1'b0, t16_q = 1'b0;
+    always @(negedge clk_mem) t16_n <= t16;
+    always @(posedge clk_mem) begin t16_p <= t16_n; t16_q <= t16_p; end
+    wire [2:0] tick_n = (t16_p != t16_q) ? 3'd2 : tick_inc;           // one tick later than the first sight: this edge starts tick 2
+`else
+    wire [2:0] tick_n = tick_inc;
+`endif
     always @(posedge clk_mem) begin
         tick  <= tick_n;
         clk16 <= (tick_n < N/2);
@@ -61,44 +75,71 @@ module kg_osca_mem #(
     wire go_b = (tick_n == SLOT_B);
     wire go_c = (tick_n == SLOT_C);
 
-    // ---------------- write capture / execution (each strobe-low period is written exactly once)
-    reg        pend_v = 0, pend_s = 0, done_v = 0, done_s = 0;
-    reg [18:0] pa_v = 0, la_v = 0;  reg [7:0] pd_v = 0, ld_v = 0;
-    reg [16:0] pa_s = 0, la_s = 0;  reg [7:0] pd_s = 0, ld_s = 0;
-    wire act_v = !vram_wr_n;
-    wire act_s = !spr_wr_n;
-    wire do_v = pend_v || (act_v && !done_v);
-    wire do_s = pend_s || (act_s && !done_s);
-    wire [18:0] wa_v = pend_v ? pa_v : vram_addr;  wire [7:0] wd_v = pend_v ? pd_v : vram_wdata;
-    wire [16:0] wa_s = pend_s ? pa_s : spr_addr;   wire [7:0] wd_s = pend_s ? pd_s : spr_wdata;
+    // ---------------- writes: decided at fixed ticks only (the inputs come from clk16 registers through OSCA's logic, or from the CPU:
+    // each one is used at least 2 ticks after it can change, see the UCF).  Measured in the simulation (T80pa bus model, KG_MEMLOG):
+    //   vram_addr / spr_addr change at ticks 0, 1 (CPU, CEN_p) and 3 (second phase);
+    //   video RAM strobe, kind 1 (CPU, blitter): low in ticks 0..3 (some 0..9);  kind 2: low in ticks 3..5;
+    //   sprite RAM strobe: low in ticks 0..3.
+    // The video RAM bus has two phases: ticks 0..2 carry the display fetch address, the write address (CPU, blitter) appears at tick 3.
+    // Tick 3 (slot B): only the FACT that a kind-1 strobe is low is noted (pend_v); the sprite RAM is written or read.
+    // Tick 5 (slot C): a write (pend_v or a low strobe) with address / data taken from the inputs now (second phase, stable since tick 3), else a read.
+    reg        pend_v = 1'b0;
+    wire wr_b = !spr_wr_n;                       // used at tick 3 only
+    wire wr_c = pend_v | !vram_wr_n;             // used at tick 5 only
+    wire [20:0] ma_bc = t_en ? t_ma : go_b ? {4'b1000, spr_addr} : {2'b00, vram_addr};   // slots B / C and the self test
 
     reg [LAT:0] c1 = 0, c2 = 0, cs = 0;
+`ifdef KG_MEMLOG
+    // statistics for the input timing: tick (0..5, 0 = clk16 rising edge) at which each strobe falls / rises and at which the addresses change
+    integer h_vf [0:5], h_vr [0:5], h_sf [0:5], h_sr [0:5], h_va [0:5], h_sa [0:5], h_vd [0:5], h_len [0:15];
+    integer hi, vlen = 0;
+    reg pv = 1'b1, ps = 1'b1;  reg [18:0] pva = 0;  reg [16:0] psa = 0;  reg [7:0] pvd = 0;
+    initial for (hi = 0; hi < 6; hi = hi + 1) begin h_vf[hi] = 0; h_vr[hi] = 0; h_sf[hi] = 0; h_sr[hi] = 0; h_va[hi] = 0; h_sa[hi] = 0; h_vd[hi] = 0; end
+    initial for (hi = 0; hi < 16; hi = hi + 1) h_len[hi] = 0;
+    always @(posedge clk_mem) begin
+        pv <= vram_wr_n; ps <= spr_wr_n; pva <= vram_addr; psa <= spr_addr; pvd <= vram_wdata;
+        if (pv && !vram_wr_n) begin h_vf[tick] = h_vf[tick] + 1; vlen = 0; end
+        if (!vram_wr_n) vlen = vlen + 1;
+        if (!pv && vram_wr_n) begin h_vr[tick] = h_vr[tick] + 1; h_len[vlen > 15 ? 15 : vlen] = h_len[vlen > 15 ? 15 : vlen] + 1; end
+        if (ps && !spr_wr_n) h_sf[tick] = h_sf[tick] + 1;
+        if (!ps && spr_wr_n) h_sr[tick] = h_sr[tick] + 1;
+        if (pva != vram_addr) h_va[tick] = h_va[tick] + 1;
+        if (psa != spr_addr) h_sa[tick] = h_sa[tick] + 1;
+        if (!vram_wr_n && pvd != vram_wdata) h_vd[tick] = h_vd[tick] + 1;
+    end
+    final begin
+        $display("MEMLOG ticks 0..5 (tick = value of the counter in the clk_mem cycle where the new value is first seen)");
+        $display("MEMLOG vram_wr_n fall: %0d %0d %0d %0d %0d %0d", h_vf[0], h_vf[1], h_vf[2], h_vf[3], h_vf[4], h_vf[5]);
+        $display("MEMLOG vram_wr_n rise: %0d %0d %0d %0d %0d %0d", h_vr[0], h_vr[1], h_vr[2], h_vr[3], h_vr[4], h_vr[5]);
+        $display("MEMLOG vram low length (ticks) 0..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", h_len[0], h_len[1], h_len[2], h_len[3], h_len[4], h_len[5], h_len[6], h_len[7], h_len[8], h_len[9], h_len[10], h_len[11], h_len[12], h_len[13], h_len[14], h_len[15]);
+        $display("MEMLOG vram_wdata change while writing: %0d %0d %0d %0d %0d %0d", h_vd[0], h_vd[1], h_vd[2], h_vd[3], h_vd[4], h_vd[5]);
+        $display("MEMLOG spr_wr_n fall: %0d %0d %0d %0d %0d %0d", h_sf[0], h_sf[1], h_sf[2], h_sf[3], h_sf[4], h_sf[5]);
+        $display("MEMLOG spr_wr_n rise: %0d %0d %0d %0d %0d %0d", h_sr[0], h_sr[1], h_sr[2], h_sr[3], h_sr[4], h_sr[5]);
+        $display("MEMLOG vram_addr change: %0d %0d %0d %0d %0d %0d", h_va[0], h_va[1], h_va[2], h_va[3], h_va[4], h_va[5]);
+        $display("MEMLOG spr_addr change: %0d %0d %0d %0d %0d %0d", h_sa[0], h_sa[1], h_sa[2], h_sa[3], h_sa[4], h_sa[5]);
+    end
+`endif
     reg  [7:0]  md_q = 8'h00;
     reg         wr_pre = 1'b0, mrd0_n = 1'b1, mwr0_n = 1'b1, mrd1_n = 1'b1, mwr1_n = 1'b1;
 
     always @(posedge clk_mem) begin
         wr_pre <= 1'b0;
-        if (!act_v || vram_addr != la_v || vram_wdata != ld_v) done_v <= 1'b0;
-        if (!act_s || spr_addr  != la_s || spr_wdata  != ld_s) done_s <= 1'b0;
-        if (act_v && !done_v) begin pend_v <= 1'b1; pa_v <= vram_addr; pd_v <= vram_wdata; end
-        if (act_s && !done_s) begin pend_s <= 1'b1; pa_s <= spr_addr;  pd_s <= spr_wdata;  end
-
+        // ma: the display fetch address (slot A, one tick after the clk16 edge) enters the last multiplexer stage; the other sources (slots B / C,
+        // the self test) have two ticks or are static
+        if (go_a && !t_en) ma <= {2'b00, vram_addr};
+        else if (go_b || go_c || t_en) ma <= ma_bc;
         if (go_a) begin                                              // display fetch read (speculative)
-            ma <= {2'b00, vram_addr}; md_oe <= 1'b0; mrd0_n <= 1'b0;
+            md_oe <= 1'b0; mrd0_n <= 1'b0;
         end
-        if (go_b) begin                                              // sprite RAM
-            if (do_s) begin
-                ma <= {4'b1000, wa_s}; md_o <= {8'h00, wd_s}; md_oe <= 1'b1; mrd0_n <= 1'b1; wr_pre <= 1'b1;
-                pend_s <= 1'b0; done_s <= act_s; la_s <= wa_s; ld_s <= wd_s;
-            end
-            else begin ma <= {4'b1000, spr_addr}; md_oe <= 1'b0; mrd0_n <= 1'b0; end
+        if (go_b) begin                                              // sprite RAM; capture of a kind-1 video RAM write
+            pend_v <= !vram_wr_n;
+            if (wr_b) begin md_o <= {8'h00, spr_wdata}; md_oe <= 1'b1; mrd0_n <= 1'b1; wr_pre <= 1'b1; end
+            else      begin md_oe <= 1'b0; mrd0_n <= 1'b0; end
         end
         if (go_c) begin                                              // video RAM write, else second-phase read
-            if (do_v) begin
-                ma <= {2'b00, wa_v}; md_o <= {8'h00, wd_v}; md_oe <= 1'b1; mrd0_n <= 1'b1; wr_pre <= 1'b1;
-                pend_v <= 1'b0; done_v <= act_v; la_v <= wa_v; ld_v <= wd_v;
-            end
-            else begin ma <= {2'b00, vram_addr}; md_oe <= 1'b0; mrd0_n <= 1'b0; end
+            pend_v <= 1'b0;
+            if (wr_c) begin md_o <= {8'h00, vram_wdata}; md_oe <= 1'b1; mrd0_n <= 1'b1; wr_pre <= 1'b1; end
+            else      begin md_oe <= 1'b0; mrd0_n <= 1'b0; end
         end
 
         // md_q is loaded ONLY at the edge where a read launched LAT ticks ago has arrived.  The sprite read (launch tick 3)
@@ -106,9 +147,9 @@ module kg_osca_mem #(
         // captures on that edge, sees the data in the same cycle, like with the original asynchronous SRAM.
         if (c1[LAT-1] | cs[LAT-1] | c2[LAT-1]) md_q <= md_i[7:0];
         c1 <= {c1, go_a};
-        cs <= {cs, go_b & ~do_s};
-        c2 <= {c2, go_c & ~do_v};
-        if (t_en) begin ma <= t_ma; md_o <= t_md; md_oe <= t_oe; end
+        cs <= {cs, go_b & ~wr_b};
+        c2 <= {c2, go_c & ~wr_c};
+        if (t_en) begin md_o <= t_md; md_oe <= t_oe; end
         if (t_en) mrd0_n <= t_rd_n[0];
         mrd1_n <= t_en ? t_rd_n[1] : 1'b1;
         if (c1[LAT]) vram_rdata1 <= md_q;

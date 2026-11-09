@@ -6,7 +6,7 @@ module tb_kg_osca_sdram;
     reg [18:0] addr = 0; reg [18:0] hint = 0; reg cs_n = 1, wr_n = 1; reg [7:0] wdata = 0; reg block_refresh = 0;
     wire [7:0] rdata; wire rd_valid, wr_pending, init_done;
     wire [1:0] ba, dqm; wire [12:0] sa; wire ras_n, cas_n, we_n; wire [15:0] dq;
-    kg_osca_sdram #(.INIT_WAIT(16'd200)) dut (.clk(clk), .reset(reset), .addr(addr), .cs_n(cs_n), .wr_n(wr_n), .wdata(wdata),
+    kg_osca_sdram #(.INIT_WAIT(16'd200)) dut (.clk(clk), .reset(reset), .dma_owns(block_refresh), .addr(addr), .cs_n(cs_n), .wr_n(wr_n), .wdata(wdata),
         .cap_late(1'b0), .block_refresh(block_refresh), .hint_addr(hint), .rdata(rdata), .rd_valid(rd_valid), .wr_pending(wr_pending), .init_done(init_done),
         .sd_ba(ba), .sd_a(sa), .sd_dqm(dqm), .sd_ras_n(ras_n), .sd_cas_n(cas_n), .sd_we_n(we_n), .sd_dq(dq));
     tb_sdram_model sdram (.clk(clk), .ba(ba), .a(sa), .dqm(dqm), .ras_n(ras_n), .cas_n(cas_n), .we_n(we_n), .dq(dq));

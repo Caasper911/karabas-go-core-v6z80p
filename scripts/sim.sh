@@ -12,7 +12,7 @@ IMG_BYTES="${IMG_BYTES:-49152}"
 SIM_MS="${SIM_MS:-1000}"
 JOBS="${JOBS:-$(nproc)}"
 VFLAGS=(--binary --timing -Wno-fatal -Wno-lint -Wno-style -Wno-WIDTH -Wno-MULTIDRIVEN -Wno-UNOPTFLAT
-        -DKG_CPU_TV80 -DTV80_REFRESH --top-module tb_boot -O1 -j "$JOBS" -GSIM_MS="$SIM_MS" -GIMG_BYTES="$IMG_BYTES")
+        -DKG_CPU_TV80 -DTV80_REFRESH ${KG_EXTRA_DEFS:-} --top-module tb_boot -O1 -j "$JOBS" -GSIM_MS="$SIM_MS" -GIMG_BYTES="$IMG_BYTES")
 
 design_files() {   # the design and the testbench models, relative to the directory given as $1
   ( cd "$1" && ls *.v | grep -vE '^(osca_pal\.v|karabas_go_osca_top\.v)$|^tb_' ; ls tv80/*.v; echo tb_sdram_model.v )

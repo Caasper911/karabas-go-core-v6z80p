@@ -4,6 +4,7 @@ module osca_core (
     output wire [4:0] dbg_wce,    // bring-up: {cpu_write, vreg enables y_window / xhws / vidctrl / rasthigh}
     output wire [31:0] dbg_vr,    // bring-up: video registers {yhws_a, xhws, live_palette, dualpf, ext_tile, tilemap, wide_border, interlace, hi_res, video_enable, xstop, xstart, y_window}
     input  wire        clk_fast,    // 96 MHz: the palette write strobe can be as short as 3 of its ticks (31 ns), shorter than a 16 MHz cycle
+    output wire [63:0] dbg_pwlog,  // bring-up: palette writes number 2..5 as {y_sel, x_sel, addr[5:0], data}
     input  wire        dbg_fixpal,  // bring-up: 1 = the colour outputs come from a fixed palette (colour = ~index) instead of the palette RAM
     input  wire [8:0]  dbg_paddr,  // bring-up: palette probe address, and the two palette bytes there {zero_red BRAM, green_blue BRAM}
     output wire [15:0] dbg_pdata,
@@ -673,11 +674,21 @@ module osca_core (
         pal_x1 <= XLXN_2828;  pal_x2 <= pal_x1;  pal_x_q <= pal_x2;
         pal_y1 <= XLXN_7421;  pal_y2 <= pal_y1;  pal_y_q <= pal_y2;
     end
-    wire pal_fall = pal_w2 & ~pal_w1;                      // the strobe was seen high two ticks ago and low one tick ago
-    wire pal_en0 = pal_fall & pal_x_q;
-    wire pal_en1 = pal_fall & pal_y_q;
-    ramb4_s8_s8 XLXI_2620 (.ADDRC(dbg_paddr), .DOC(dbg_pd0), .ADDRA(pal_a_q[8:0]), .ADDRB(colour_select[8:0]), .CLKA(clk_fast), .CLKB(clock_16mhz_dist), .DIA(pal_d_q[7:0]), .DIB(XLXN_7651[7:0]), .ENA(pal_en0), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(gb_ram[7:0]));
-    ramb4_s8_s8 XLXI_2621 (.ADDRC(dbg_paddr), .DOC(dbg_pd1), .ADDRA(pal_a_q[8:0]), .ADDRB(colour_select[8:0]), .CLKA(clk_fast), .CLKB(clock_16mhz_dist), .DIA(pal_d_q[7:0]), .DIB(XLXN_7651[7:0]), .ENA(pal_en1), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(zr_ram[7:0]));
+    wire pal_fall = pal_w2 & ~pal_w1;                      // START of the (delayed) write strobe: the bus of a phase-accurate Z80 is valid then, but no longer at the end of the strobe; use the values of the first low tick (pal_*1)
+    wire pal_en0 = pal_fall & pal_x1;
+    wire pal_en1 = pal_fall & pal_y1;
+    reg [7:0] pw_n = 8'd0;  reg [15:0] pw2 = 16'd0, pw3 = 16'd0, pw4 = 16'd0, pw5 = 16'd0;
+    always @(posedge clk_fast) if (pal_en0 | pal_en1) begin
+        if (pw_n != 8'hff) pw_n <= pw_n + 8'd1;
+        case (pw_n) 8'd2: pw2 <= {pal_y1, pal_x1, pal_a1[5:0], pal_d1};  8'd3: pw3 <= {pal_y1, pal_x1, pal_a1[5:0], pal_d1};
+                    8'd4: pw4 <= {pal_y1, pal_x1, pal_a1[5:0], pal_d1};  8'd5: pw5 <= {pal_y1, pal_x1, pal_a1[5:0], pal_d1};  default: ; endcase
+    end
+    assign dbg_pwlog = {8'd0, pw_n, pw3, pw4, pw5};
+`ifdef KG_PALLOG
+    always @(posedge clk_fast) if (pal_en0 | pal_en1) $display("PALW t=%0t y=%b x=%b addr=%03h data=%02h", $time, pal_y1, pal_x1, pal_a1, pal_d1);
+`endif
+    ramb4_s8_s8 XLXI_2620 (.ADDRC(dbg_paddr), .DOC(dbg_pd0), .ADDRA(pal_a1[8:0]), .ADDRB(colour_select[8:0]), .CLKA(clk_fast), .CLKB(clock_16mhz_dist), .DIA(pal_d1[7:0]), .DIB(XLXN_7651[7:0]), .ENA(pal_en0), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(gb_ram[7:0]));
+    ramb4_s8_s8 XLXI_2621 (.ADDRC(dbg_paddr), .DOC(dbg_pd1), .ADDRA(pal_a1[8:0]), .ADDRB(colour_select[8:0]), .CLKA(clk_fast), .CLKB(clock_16mhz_dist), .DIA(pal_d1[7:0]), .DIB(XLXN_7651[7:0]), .ENA(pal_en1), .ENB(XLXN_7396), .RSTA(XLXN_7427), .RSTB(XLXN_7395), .WEA(XLXN_7396), .WEB(XLXN_7427), .DOA(), .DOB(zr_ram[7:0]));
     gnd XLXI_374 [7:0] (.G(XLXN_7651[7:0]));
     buf_x XLXI_2629 [7:0] (.I(cpu_address_bus[8:1]), .O(palette_wr_addr[7:0]));
     inv XLXI_413 (.I(cpu_write), .O(XLXN_2825));
