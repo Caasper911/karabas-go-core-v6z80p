@@ -516,7 +516,11 @@ module tb_boot;
                 dc_i = dut.a_bus[8:0];
                 dc_exp = dc_i[8] ? (dc_i[7:0] ^ 8'h5A) : (({dc_i[7:0], 2'b00} + dc_i[7:0]) & 8'hFF);
                 dc_chk = dc_chk + 1;
-                if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch t=%0t addr=%04h got=%02h exp=%02h  sdram rd_ok=%b rd_wa=%05h rd_word=%04h e0=%b/%05h/%04h e1=%b/%05h/%04h rd_valid=%b", $time, dut.a_bus, dut.sys_rdata, dc_exp, dut.sdram.rd_ok, dut.sdram.rd_wa, dut.sdram.rd_word, dut.sdram.e0_ok, dut.sdram.e0_cwa, dut.sdram.e0_word, dut.sdram.e1_ok, dut.sdram.e1_cwa, dut.sdram.e1_word, dut.sdram.rd_valid); end
+                `ifndef KG_SYSRAM_MODEL
+if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch t=%0t addr=%04h got=%02h exp=%02h  sdram rd_ok=%b rd_wa=%05h rd_word=%04h e0=%b/%05h/%04h e1=%b/%05h/%04h rd_valid=%b", $time, dut.a_bus, dut.sys_rdata, dc_exp, dut.sdram.rd_ok, dut.sdram.rd_wa, dut.sdram.rd_word, dut.sdram.e0_ok, dut.sdram.e0_cwa, dut.sdram.e0_word, dut.sdram.e1_ok, dut.sdram.e1_cwa, dut.sdram.e1_word, dut.sdram.rd_valid); end
+`else
+                if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch t=%0t addr=%04h got=%02h exp=%02h", $time, dut.a_bus, dut.sys_rdata, dc_exp); end
+`endif
             end
             dc_prev <= dut.a_bus;
         end else dc_prev <= 16'hFFFF;
@@ -527,7 +531,10 @@ module tb_boot;
     always @(posedge clk_mem) if (ms >= 12) begin
         dl_a <= dut.sys_addr_m;
         if (!dut.busak_n && dut.sys_addr_m != dl_a && dut.sys_addr_m >= 19'h06000 && dut.sys_addr_m < 19'h06200) begin dl_run <= 1'b1; dl_t <= 1;
-            dl_st <= {dut.sdram.state, dut.sdram.step, dut.sdram.acc_wr, dut.sdram.acc_hint}; dl_wa <= dut.sdram.acc_wa; dl_pw <= dut.sdram.pw; dl_rd <= dut.sdram.need_read_q; dl_tt <= $time; end
+`ifndef KG_SYSRAM_MODEL
+            dl_st <= {dut.sdram.state, dut.sdram.step, dut.sdram.acc_wr, dut.sdram.acc_hint}; dl_wa <= dut.sdram.acc_wa; dl_pw <= dut.sdram.pw; dl_rd <= dut.sdram.need_read_q;
+`endif
+            dl_tt <= $time; end
         else if (dl_run) begin
             if (dut.sdram_rd_valid || dut.busak_n) begin dl_run <= 1'b0; dl_n = dl_n + 1; dl_h[dl_t > 15 ? 15 : dl_t] = dl_h[dl_t > 15 ? 15 : dl_t] + 1; if (dl_t >= 10 && dl_pr < 12) begin dl_pr = dl_pr + 1; $display("DMASLOW t=%0t lat=%0d addr=%05h  at the change: state=%0d step=%0d acc_wr=%b acc_hint=%b acc_wa=%05h pw=%b need_read_q=%b", dl_tt, dl_t, dl_a, dl_st[6:5], dl_st[4:2], dl_st[1], dl_st[0], dl_wa, dl_pw, dl_rd); end if (dl_t > dl_max) dl_max = dl_t; if (dl_t > 11) dl_over = dl_over + 1; end
             else dl_t <= dl_t + 1;
@@ -543,9 +550,12 @@ module tb_boot;
 
     // ---------------- LCCHK / LCLAT: line copper list reads ($6400..$67FF) done by the FPGA, checked against the loaded image
     integer lc_chk = 0, lc_err = 0, lc_n = 0, lc_max = 0, lc_over = 0, lc_prev_valid = 0;
+    // +lclo=HEX +lchi=HEX: the window of the checked list (default $6400..$67FF)
+    reg [15:0] lc_lo = 16'h6400, lc_hi = 16'h6800;
+    initial begin if ($value$plusargs("lclo=%h", lc_lo)) ; if ($value$plusargs("lchi=%h", lc_hi)) ; end
     reg [15:0] lc_prev = 16'hFFFF;
     always @(posedge clk16) begin
-        if (!dut.busak_n && !dut.rd_n_bus && !dut.system_ram_cs && ms >= 12 && dut.a_bus >= 16'h6400 && dut.a_bus < 16'h6800) begin
+        if (!dut.busak_n && !dut.rd_n_bus && !dut.system_ram_cs && ms >= 12 && dut.a_bus >= lc_lo && dut.a_bus < lc_hi) begin
             if (dut.a_bus == lc_prev) begin
                 lc_chk = lc_chk + 1;
                 if (dut.sys_rdata !== img[dut.a_bus]) begin lc_err = lc_err + 1; if (lc_err < 6) $display("LCCHK mismatch addr=%04h got=%02h exp=%02h", dut.a_bus, dut.sys_rdata, img[dut.a_bus]); end
@@ -556,11 +566,20 @@ module tb_boot;
     reg [18:0] lcl_a = 0; integer lcl_t = 0; reg lcl_run = 0;
     always @(posedge clk_mem) if (ms >= 12) begin
         lcl_a <= dut.sys_addr_m;
-        if (!dut.busak_n && dut.sys_addr_m != lcl_a && dut.sys_addr_m >= 19'h06400 && dut.sys_addr_m < 19'h06800) begin lcl_run <= 1'b1; lcl_t <= 1; end
+        if (!dut.busak_n && dut.sys_addr_m != lcl_a && dut.sys_addr_m >= {3'b000, lc_lo} && dut.sys_addr_m < {3'b000, lc_hi}) begin lcl_run <= 1'b1; lcl_t <= 1; end
         else if (lcl_run) begin
             if (dut.sdram_rd_valid || dut.busak_n) begin lcl_run <= 1'b0; lc_n = lc_n + 1; if (lcl_t > lc_max) lc_max = lcl_t; if (lcl_t > 11) lc_over = lc_over + 1; end
             else lcl_t <= lcl_t + 1;
         end
+    end
+    // +lcwlog: tick-by-tick bus around the first line copper register writes (tick = the memory wrapper's counter, 0 = clk16 rising edge)
+    integer lw_n = 0, lw_after = 0;
+    always @(posedge clk_mem) if ($test$plusargs("lcwlog") && ms >= 40 && lw_n < 6) begin
+        if (dut.core.linecop_busy && (!dut.core.cpu_write || lw_after != 0))
+            $display("LCW t=%0t tick=%0d cpu_write=%b reg_addr=%03h data_in=%02h a_bus=%04h sys_rdata=%02h", $time, dut.mem.tick, dut.core.cpu_write,
+                     dut.core.cpu_address_bus[10:0], dut.core.cpu_databus_in, dut.a_bus, dut.sys_rdata);
+        if (dut.core.linecop_busy && !dut.core.cpu_write) lw_after <= 3;
+        else if (lw_after != 0) begin lw_after <= lw_after - 1; if (lw_after == 1) begin lw_n = lw_n + 1; $display("LCW ----"); end end
     end
     task lc_report; begin
         $display("LCCHK: %0d line copper list reads checked, %0d wrong", lc_chk, lc_err);
