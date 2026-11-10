@@ -6,7 +6,8 @@
 Портировать ядро OSCA (github.com/minexew/v6z80p, `OSCA/v6z80p_plus_v1.1`, проект `osca676p`, исходники в виде схем ISE) на плату
 **Karabas Go** (Spartan-6 `xc6slx25-ftg256-2`, SDRAM MT48LC16M16A2 по тестам NanoMig, SRAM, MCU для SD/PS2).
 **Статус (2026-11-10):** сборка ISE с T80pa (`src/karabas_go.prj/.xst/.ucf/.ut`, `make` в `src/`, ветка `board/t80pa-pll`) на плате работает с FLOS 6.14 (образ по умолчанию),
-клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов) и звук MOD; все ограничения тайминга выполнены.
+клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов), звук MOD, OSD/сброс и виртуальная SD на образе
+(OSD «SD card» = Image, `kg_sd_emu.v`, кеш секторов, burst MCU); все ограничения тайминга выполнены (map `-t 3`).
 Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `sim/scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 
@@ -33,6 +34,7 @@ make go-xst | go-impl | go-core | go-report   # отдельные шаги; go-
 make tests           # .kg тестовых программ для платы: tests/out/<имя>.kg (scripts/make_test_cores.py)
 make clean           # промежуточные файлы ISE
 make unit            # контроллер SDRAM против модели SDRAM с проверкой таймингов (iverilog)
+make sd-unit         # виртуальная SD (kg_sd_emu): команды, чтение, запись, кеш (iverilog)
 make sim-build       # Verilator: sim/build/real/Vtb_boot;  make sim-ref — эталонная сборка (идеальные памяти)
 make regress         # FLOS, спрайты, звук, копроцессор, 5 режимов, чтение VRAM процессором; сравнение с sim/golden/*.png
 make regress-quick   # только режимы и чтение VRAM
@@ -57,7 +59,13 @@ Perl-модули, а g++ пишет временные файлы в `C:\Window
 - Системная RAM (512 КБ) на SDRAM: `kg_osca_sdram.v` (чтение спекулятивно по смене адреса слова, запись захватывается по стробу, регенерация
   не выполняется пока FPGA просит шину/владеет ею, два слота упреждающего чтения по `linecop_pc_o` для копроцессора, `WAIT_n` для CPU в `kg_osca_soc.v`).
 - Загрузка без PIC/EEPROM: подменённый boot ROM (`roms/rom_tail.asm` → `roms/boot_rom_mcu.bin`), FLOS 5.68 кладёт в RAM по `$1000` MCU-загрузчик, пока ядро в сбросе; MCU держится в сбросе до `sd_init`.
-- Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA. Не сделаны: протокол джойстиков, PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`sim/alt/kg_osca_eeprom.v` не симулировался).
+- Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA, OSD (`kg_osd_overlay` на `clk32`), сброс (OSD Reset / F12,
+  кнопка платы, MCU BUSY). Не сделаны: протокол джойстиков, PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`sim/alt/kg_osca_eeprom.v` не симулировался).
+- Виртуальная SD (`rtl/io/kg_sd_emu.v`, логика карты из `nextor_sd.v` karabas-go-core-msx): SPI-слейв на выводах SD ядра, секторы через `img_sdc`
+  (file mounter MCU, слот 0, OSD «SD image»). Ncr = 2 (FLOS пропускает первый байт после команды); пока карта ждёт MCU (5–40 мс на сектор), CPU получает
+  WAIT на `IN $0A` (FLOS ждёт токен данных всего 8000 опросов), но не при поднятом BUSRQ (иначе видеоядро не получает шину: мигание, зависания).
+  Кеш 32 сектора (строка `lba[4:0]^lba[9:5]^lba[14:10]`, сквозная запись), burst MCU на пинах N9/M11. Симуляция: `tb_boot +sdimg=<образ> +sddelay=<мс>`,
+  образ — `sim/scripts/make_fat16_image.py`.
 - Генерация Verilog из схем (`scripts/sch2v/`): `sch2v.py`, `gen_prims.py`, `patch_osca_top.py`, `trace_consumers.py` (нужен клон minexew/v6z80p, каталог схем
   `OSCA/v6z80p_plus_v1.1/osca676p`; проверенный вызов: `python3 scripts/sch2v/sch2v.py <каталог osca676p> <outdir> osca_pal`, затем `scripts/sch2v/patch_osca_top.py osca_pal.v osca_core.v`;
   `gen_prims.py [out.v]` пишет `kg_prims.v` (в `rtl/prims/kg_prims.v` есть ручные правки — сравнивать перед заменой),
