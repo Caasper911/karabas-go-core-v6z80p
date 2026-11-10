@@ -47,18 +47,20 @@ module karabas_go_osca_top (
     // clk96 and clk16 both come from one PLL (VCO 576 MHz = 96 MHz * 6): their rising edges coincide, as in the simulation.  (clk16 used to be the
     // memory wrapper's divide-by-6 counter through a BUFG: its edges came ~half a 96 MHz period late, so every clk16 <-> clk96 transfer on the
     // board was shifted by a tick against the simulation, and ISE did not analyse these paths.)  kg_osca_mem (KG_PLL16) aligns its tick counter to clk16.
-    wire pll_fb, clk96_pll, clk16_pll, pll_locked;
+    wire pll_fb, clk96_pll, clk16_pll, clk32_pll, pll_locked, clk32;
     PLL_BASE #(
         .BANDWIDTH("OPTIMIZED"), .CLK_FEEDBACK("CLKFBOUT"), .COMPENSATION("INTERNAL"),
         .DIVCLK_DIVIDE(1), .CLKFBOUT_MULT(6), .CLKFBOUT_PHASE(0.0), .CLKIN_PERIOD(10.417),
         .CLKOUT0_DIVIDE(6),  .CLKOUT0_PHASE(0.0), .CLKOUT0_DUTY_CYCLE(0.5),
         .CLKOUT1_DIVIDE(36), .CLKOUT1_PHASE(0.0), .CLKOUT1_DUTY_CYCLE(0.5),
+        .CLKOUT2_DIVIDE(18), .CLKOUT2_PHASE(0.0), .CLKOUT2_DUTY_CYCLE(0.5),     // 32 MHz: the video output with the OSD (see below)
         .REF_JITTER(0.1)
     ) u_pll (
         .CLKIN(clk96_raw), .CLKFBIN(pll_fb), .CLKFBOUT(pll_fb), .RST(~dcm_locked), .LOCKED(pll_locked),
-        .CLKOUT0(clk96_pll), .CLKOUT1(clk16_pll), .CLKOUT2(), .CLKOUT3(), .CLKOUT4(), .CLKOUT5());
+        .CLKOUT0(clk96_pll), .CLKOUT1(clk16_pll), .CLKOUT2(clk32_pll), .CLKOUT3(), .CLKOUT4(), .CLKOUT5());
     BUFG u_bufg96 (.I(clk96_pll), .O(clk96));
     BUFG u_bufg16 (.I(clk16_pll), .O(clk16));
+    BUFG u_bufg32 (.I(clk32_pll), .O(clk32));
 
     // reset: keep OSCA in reset until the DCM has locked (jumper_reset = 0 requests a reset)
     reg [3:0] lock_sr = 4'h0;
@@ -94,7 +96,10 @@ module karabas_go_osca_top (
     wire [31:0] rom_addr;
     wire [7:0]  rom_data;
     wire sd_init;
-    reg  sd_init_ever = 1'b0;                       // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
+    wire [1:0]  hw_btn;                  // the buttons of the board (kg_mcu BTNS): [0] reset
+    wire [15:0] softsw_command, osd_command;
+    wire        mcu_busy;
+    reg  sd_init_ever = 1'b0;                      // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
     always @(posedge clk96) if (sd_init) sd_init_ever <= 1'b1;
     kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
         .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever & chk_done),   // the loader starts after the SDRAM initialisation (and the calibration with KG_SDRAM_CAL): the image is written with the final settings
@@ -104,7 +109,8 @@ module karabas_go_osca_top (
         .KB_STATUS(), .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
         .KB_SCANCODE(kb_scancode), .KB_SCANCODE_UPD(kb_scancode_upd), .XT_SCANCODE(), .XT_SCANCODE_UPD(),
         .PS2_COMMAND(16'h0000), .PS2_COMMAND_WR(1'b0),
-        .JOY_L(joy_l), .JOY_R(joy_r), .BTNS(),
+        .JOY_L(joy_l), .JOY_R(joy_r), .BTNS(hw_btn),
+        .SOFTSW_COMMAND(softsw_command), .OSD_COMMAND(osd_command), .BUSY(mcu_busy),
         .RTC_A(8'h00), .RTC_DI(8'h00), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
         .UART_RX_DATA(), .UART_RX_IDX(), .UART_TX_DATA(8'h00), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
         .UART_DLM(8'h00), .UART_DLL(8'h00), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
@@ -113,6 +119,17 @@ module karabas_go_osca_top (
         .FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'b00), .ESP_UART_RX_DATA(8'h00), .ESP_UART_RX_WR(1'b0),
         .ROMLOADER_ACTIVE(romloader_active), .ROMLOAD_ADDR(rom_addr), .ROMLOAD_DATA(rom_data), .ROMLOAD_WR(rom_wr),
         .FLASHBOOT_START(1'b0), .FLASHBOOT_COREID(5'h00), .PRN_DATA(8'h00), .PRN_WR(1'b0));
+
+    // ---------------------------------------------------------------- OSD switches (core.json "osd": the items with a value, in their order)
+    //   register 0: Reset (T, F12)
+    wire [1*8-1:0] softsw;
+    kg_soft_switches #(.N(1)) u_softsw (.clk(clk96), .command(softsw_command), .regs(softsw), .upd());
+    wire kb_reset = softsw[0];
+    // reset of the core (as the cores of karabas-go: the OSD Reset, the reset button of the board, the MCU busy): OSCA's reset input
+    // (jumper_reset, low = reset) is held while it is requested; then its boot ROM jumps to FLOS again ($1010, FLOS stays in RAM)
+    reg [2:0] rst_req_s = 3'b000;
+    always @(posedge clk16) rst_req_s <= {rst_req_s[1:0], kb_reset | hw_btn[0] | mcu_busy};
+    wire rst_req = rst_req_s[2];
 
     // clk96 -> clk16 crossing of the (rare) scan code bytes: hold the byte, toggle a flag.  KB_SCANCODE_UPD of kg_mcu TOGGLES with every byte
     // (kg_mcu_hid.v): a new byte is any change of its level.  (It was taken as a pulse: bytes were repeated while it was 1 and lost while it was 0,
@@ -183,7 +200,7 @@ module karabas_go_osca_top (
         .joystick_clock_out(), .joystick_data_in(1'b1),        // the PIC link (serjoy2) is not used
         .joy_bits(joy_s2),   // OSCA port 1 = JOY_R, port 0 = JOY_L (synchronised to clk16)
         .ld_active(ld_act_r), .ld_addr(ld_addr_r), .ld_data(ld_data_r), .ld_wr(ld_wr_r),   // boot image from the MCU
-        .jumper_nmi(1'b1), .jumper_reset(run & ~load_s[1] & init_s[1]), .jumper_vga(1'b0),   // 0 = VGA video mode
+        .jumper_nmi(1'b1), .jumper_reset(run & ~load_s[1] & init_s[1] & ~rst_req), .jumper_vga(1'b0),   // 0 = VGA video mode
         .expansion_pin_a(), .expansion_pin_b(),
         .system_reset_out(system_reset_out),
         .sdram_reset(~(dcm_locked & pll_locked) | chk_rst), .sdram_cap_late(chk_cap), .sdram_init_done(sd_init),
@@ -336,17 +353,32 @@ module karabas_go_osca_top (
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): register RGB and syncs on the pixel clock and
     // give the DAC the inverted pixel clock (it samples in the middle of the pixel).  The FT812 is kept off the VGA bus.
+    // The OSD of the MCU (kg_osd_overlay of karabas-go-modules) is laid over the picture on a 32 MHz clock (the PLL, edges on those of clk16):
+    // each 16 MHz pixel of OSCA is two clocks.  The overlay is made for a character cell of 16 clocks (two per OSD pixel); with OSCA's
+    // line of 508 clocks of 16 MHz its 32 cells would be wider than the line, at 32 MHz (1016 clocks, H_DIV4_WIDTH above that: a counter
+    // step per 2 clocks) the menu is 256 OSCA pixels wide.  Its position: H_OFFSET in OSCA pixels from the leading edge of HSYNC,
+    // V_OFFSET in pairs of lines from that of VSYNC (the 524-line frame: a step per 2 lines), about the middle of OSCA's display window.
+    wire [7:0] mix_r = show_dbg ? dbg_r  : osca_r;
+    wire [7:0] mix_g = show_dbg ? dbg_g  : osca_g;
+    wire [7:0] mix_b = show_dbg ? dbg_b  : osca_b;
+    wire       mix_hs = show_dbg ? dbg_hs : horizontal_sync;     // low active
+    wire       mix_vs = show_dbg ? dbg_vs : tv_sync;
+    wire [23:0] osd_rgb;
+    kg_osd_overlay #(.H_OFFSET(160), .V_OFFSET(27), .H_DIV4_WIDTH(2000)) u_osd (
+        .clk(clk32), .rgb_i({mix_r, mix_g, mix_b}), .rgb_o(osd_rgb),
+        .hsync_i(~mix_hs), .vsync_i(~mix_vs), .v_offset(11'd0), .osd_command(osd_command));
+    // The board has a VGA DAC clocked by V_CLK: RGB and syncs registered on the pixel clock (32 MHz now), the DAC gets the inverted clock
     reg [7:0] vo_r = 8'h00, vo_g = 8'h00, vo_b = 8'h00;  reg vo_hs = 1'b1, vo_vs = 1'b1;
-    always @(posedge clk16) begin
-        vo_r  <= show_dbg ? dbg_r  : osca_r;
-        vo_g  <= show_dbg ? dbg_g  : osca_g;
-        vo_b  <= show_dbg ? dbg_b  : osca_b;
-        vo_hs <= show_dbg ? dbg_hs : horizontal_sync;
-        vo_vs <= show_dbg ? dbg_vs : tv_sync;
+    always @(posedge clk32) begin
+        vo_r  <= osd_rgb[23:16];
+        vo_g  <= osd_rgb[15:8];
+        vo_b  <= osd_rgb[7:0];
+        vo_hs <= mix_hs;
+        vo_vs <= mix_vs;
     end
     assign VGA_R = vo_r;  assign VGA_G = vo_g;  assign VGA_B = vo_b;  assign VGA_HS = vo_hs;  assign VGA_VS = vo_vs;
-    wire clk16_n = ~clk16;
-    ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) u_vclk (.Q(V_CLK), .C0(clk16), .C1(clk16_n), .CE(1'b1), .D0(1'b0), .D1(1'b1), .R(1'b0), .S(1'b0));
+    wire clk32_n = ~clk32;
+    ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) u_vclk (.Q(V_CLK), .C0(clk32), .C1(clk32_n), .CE(1'b1), .D0(1'b0), .D1(1'b1), .R(1'b0), .S(1'b0));
     assign FT_OE_N = 1'b1;  assign FT_SPI_CS_N = 1'b1;  assign FT_SPI_SCK = 1'b0;
 
     // audio
