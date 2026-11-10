@@ -1,6 +1,6 @@
 # OSCA (V6Z80P+ v1.1, osca676p) -> Karabas Go   (status: work in progress)
 
-Layout: `src/` holds the design (`rtl/`: the top `karabas_go_osca_top.v` at its root, the rest in `soc/ cpu/ memory/ video/ sound/ io/ debug/ prims/` - RTL file names below without a path are in that tree; `ise/`, `docs/`, Z80 test programs in `tests/`, `roms/*.bin` and the boot ROM source `roms/rom_tail.asm`), `src/sim/` everything for the simulation
+Layout: `src/` holds the design (the build inputs `karabas_go.prj/.xst/.ucf/.ut`, `core.json` and the `Makefile`: `make` -> `v6z80p.kg`; `rtl/`: the top `karabas_go_osca_top.v` at its root, the rest in `soc/ cpu/ memory/ video/ sound/ io/ debug/ prims/` - RTL file names below without a path are in that tree; `docs/`, Z80 test programs in `tests/`, `roms/*.bin` and the boot ROM source `roms/rom_tail.asm`), `src/sim/` everything for the simulation
 (testbenches, models, reference overrides, golden frames, `roms/*.hex`, scripts, builds); `modules/` (a clone of karabas-go-modules, not in git)
 sits next to `src/`.  File names and paths below are relative to `src/`.
 

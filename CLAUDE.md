@@ -5,7 +5,7 @@
 ## Цель и статус
 Портировать ядро OSCA (github.com/minexew/v6z80p, `OSCA/v6z80p_plus_v1.1`, проект `osca676p`, исходники в виде схем ISE) на плату
 **Karabas Go** (Spartan-6 `xc6slx25-ftg256-2`, SDRAM MT48LC16M16A2 по тестам NanoMig, SRAM, MCU для SD/PS2).
-**Статус (2026-11-10):** сборка ISE с T80pa (`ise/osca676p_t80pa.xst`, ветка `board/t80pa-pll`) на плате работает с FLOS 6.14 (образ по умолчанию),
+**Статус (2026-11-10):** сборка ISE с T80pa (`src/karabas_go.prj/.xst/.ucf/.ut`, `make` в `src/`, ветка `board/t80pa-pll`) на плате работает с FLOS 6.14 (образ по умолчанию),
 клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов) и звук MOD; все ограничения тайминга выполнены.
 Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `sim/scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
@@ -18,24 +18,29 @@
   (см. `docs/OPEN_TASKS.md`). В `master` не вливать, пока `make regress` не пройдёт на этой ветке целиком.
 
 ## Структура
-В корне только `modules/` (клон karabas-go-modules, в .gitignore), `src/`, `CLAUDE.md` и `README.md`. В `src/`: `rtl/` (верхний модуль `karabas_go_osca_top.v` в корне, остальное по папкам: `soc/` (ядро OSCA `osca_core.v`, `kg_osca_soc.v`), `cpu/` (`kg_osca_cpu.v`, `t80pa/`, `t80/`), `memory/`, `video/`, `sound/`, `io/`, `debug/`, `prims/`; имена RTL-файлов в тексте без пути — из этого дерева), `ise/`,
-`docs/`, `scripts/make_kg1.py`, генераторы Verilog из схем, тестовые программы Z80 `tests/` (`video/`, `linecop/`, `sound/`, `system/`; из них собираются образы и для симуляции, и для `.kg1`), `roms/` (`.bin` для платы и генерации, `rom_tail.asm` — исходник подменённого boot ROM).
+В корне только `modules/` (клон karabas-go-modules, в .gitignore), `src/`, `CLAUDE.md` и `README.md`. В `src/`: `rtl/` (верхний модуль `karabas_go_osca_top.v` в корне, остальное по папкам: `soc/` (ядро OSCA `osca_core.v`, `kg_osca_soc.v`), `cpu/` (`kg_osca_cpu.v`, `t80pa/`, `t80/`), `memory/`, `video/`, `sound/`, `io/`, `debug/`, `prims/`; имена RTL-файлов в тексте без пути — из этого дерева), файлы сборки `karabas_go.prj/.xst/.ucf/.ut`, `core.json`, `Makefile` (ядро `v6z80p.kg`),
+`docs/`, `scripts/make_test_cores.py` (.kg тестов), генераторы Verilog из схем, тестовые программы Z80 `tests/` (`video/`, `linecop/`, `sound/`, `system/`; из них собираются образы и для симуляции, и для `.kg1`), `roms/` (`.bin` для платы и генерации, `rom_tail.asm` — исходник подменённого boot ROM).
 Всё для симуляции — в `src/sim/`: тестбенчи `tb_*`, модели (`kg_sysram_model.v`, `kg_tv80pa.v`, `kg_az80.v`, `tv80/`, `alt/`), эталон (`ref_overrides/`,
 `golden/`), образы `roms/*.hex` (`lc_images/`, `modes/`), скрипты `scripts/` (`sim.sh`, `regress.py`, генераторы образов parity и MOD), сборки `build/`.
 Все пути ниже — относительно `src/`; команды `make` запускать из `src/`.
 
-## Как запускать (нужны: verilator ≥ 5 с `--binary --timing`, iverilog, yosys, python3 + numpy + pillow, pasmo; для ISE — ISE 14.7)
+## Как запускать (нужны: ISE 14.7, MSYS2 (make, bash, python3 + numpy + pillow), verilator ≥ 5 с `--binary --timing`, iverilog, sjasmplus;
+## karabas-go-tools рядом с репозиторием: `C:\hobby\karabas-go-tools`)
+Сборка как у ядер Andy Karpov (karabas-go-core-tsconf): всё из `src/`, команды `make` в оболочке MSYS2.
 ```
-make unit            # контроллер SDRAM против модели SDRAM с проверкой таймингов (iverilog, ~2-4 мин)
-make build           # Verilator: build/real/Vtb_boot (3-4 мин)
-make regress         # FLOS, спрайты, звук, копроцессор, 5 режимов, чтение VRAM процессором; сравнение с golden/*.png
+make                 # = make go: karabas_go.prj/.xst/.ucf/.ut -> karabas_go.bin -> v6z80p.kg (make_core.py по core.json)
+make go-xst | go-impl | go-core | go-report   # отдельные шаги; go-report — ресурсы и итог тайминга
+make tests           # .kg тестовых программ для платы: tests/out/<имя>.kg (scripts/make_test_cores.py)
+make clean           # промежуточные файлы ISE
+make unit            # контроллер SDRAM против модели SDRAM с проверкой таймингов (iverilog)
+make sim-build       # Verilator: sim/build/real/Vtb_boot;  make sim-ref — эталонная сборка (идеальные памяти)
+make regress         # FLOS, спрайты, звук, копроцессор, 5 режимов, чтение VRAM процессором; сравнение с sim/golden/*.png
 make regress-quick   # только режимы и чтение VRAM
-make ref             # эталонная сборка (идеальные память, оригинальные блиттер и спрайты) для создания новых golden-кадров
-make ise             # ise/Makefile (НЕ запускался; см. ise/ и docs/OPEN_TASKS.md)
 ```
-На Windows симуляцию запускать из PowerShell через MSYS2: `$env:MSYSTEM='UCRT64'; $env:CHERE_INVOKING='1'; & C:\msys64\usr\bin\bash.exe -l script.sh`
-(в Git Bash Verilator не находит Perl-модули, а g++ пишет временные файлы в `C:\Windows`). Сборка ISE: `cmd /c "C:\hobby\karabas_go_v6z80p\src\ise\run_all.bat osca676p_t80pa.xst"`
-(полный путь; map иногда молча обрывается на «Global Placement» — повторить). Модель шины T80pa в симуляции (`sim/kg_tv80pa.v`, сверена с GHDL):
+Из PowerShell: `$env:MSYSTEM='UCRT64'; $env:CHERE_INVOKING='1'; & C:\msys64\usr\bin\bash.exe -l script.sh` (в Git Bash Verilator не находит
+Perl-модули, а g++ пишет временные файлы в `C:\Windows`). ISE на Windows `make` вызывает с переменными `settings64.bat` (`XILINX`, `PATH`),
+на Linux — через `source settings64.sh`. map иногда молча обрывается на «Global Placement» (нет `karabas_go_map.ncd`) — `make` ещё раз.
+Модель шины T80pa в симуляции (`sim/kg_tv80pa.v`, сверена с GHDL):
 `KG_EXTRA_DEFS="-DKG_CPU_T80PA -DKG_CPU_TV80PA" BUILD=sim/build/pa sim/scripts/sim.sh build real`. Verilog из `ghdl --synth` для T80 как модель НЕ годится.
 `sim/scripts/sim.sh run <real|ref> <image.hex> <outdir> [ms]` запускает один образ; в `<outdir>` лягут `run.log` и `frame_N.ppm`.
 Тестбенч `sim/tb_boot.sv` печатает проверки: `SDRAM model: ... violations`, `DMACHK` (байты, которые DMA звука получает из RAM, против ожидаемых),
@@ -84,6 +89,6 @@ make ise             # ise/Makefile (НЕ запускался; см. ise/ и do
    Если программа на плате ведёт себя не так — запускать в симуляции её саму (`sim/scripts/make_parity_image.py` как образец), а не похожий тест.
 
 ## Справочные репозитории (клонировать рядом)
-- `modules/` в корне репозитория (рядом с `src/`): https://github.com/andykarpov/karabas-go-modules (нужны 9 файлов, перечислены в `src/ise/osca676p.prj` как `../../modules/...`; `modules/` в .gitignore)
+- `modules/` в корне репозитория (рядом с `src/`): https://github.com/andykarpov/karabas-go-modules (нужны 9 файлов, перечислены в `src/karabas_go.prj` как `../modules/...`; `modules/` в .gitignore)
 - https://github.com/minexew/v6z80p (примеры `FLOS_based_programs/Simple_examples`, `tests/Misc`, `Bootcode`, `OSCA/ROM`; FLOS568F.OSF в `Contributions/Hans/CPM/v6z80pcpm30/`)
 - https://github.com/andykarpov/karabas-go-core-nanomig (`fastram_sdram.v` — основа контроллера), `-core-next`, `-core-profi`: пины платы, Makefile и xst для ISE.

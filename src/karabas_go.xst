@@ -1,11 +1,11 @@
-set -tmpdir "work/xst/projnav.tmp"
-set -xsthdpdir "work/xst"
+set -tmpdir "xst/projnav.tmp"
+set -xsthdpdir "xst"
 run
--ifn osca676p_t80pa.prj
--ofn osca676p
+-ifn karabas_go.prj
+-ofn karabas_go
 -ofmt NGC
 -p xc6slx25-2-ftg256
--vlgincdir {"../../modules/rtl/mcu" "../sim/tv80"}
+-vlgincdir {"../modules/rtl/mcu"}
 -define {KG_CPU_T80PA KG_PLL16 KG_NO_MEMTEST}
 -top karabas_go_osca_top
 -opt_mode Speed

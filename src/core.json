@@ -1,0 +1,18 @@
+{
+    "id": "v6z80p",
+    "name": "V6Z80 OSCA",
+    "visible": true,
+    "type": "osd",
+    "order": 3,
+    "eeprom_bank": 0,
+    "rtc_mode": 2,
+    "roms": [
+    {"filename": "roms/FLOSv614.OSF", "address": 4096}
+    ],
+    "boards": {
+        "go": {"build": "26111017", "bitstream": "karabas_go.bin"}
+    },
+    "osd": [
+    {"type": "T", "name": "Reset", "options": null, "default": 0, "hotkey": "F12"}
+    ]
+}
