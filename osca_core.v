@@ -30,6 +30,8 @@ module osca_core (
     output wire sdc_cs,
     output wire sdc_pow,
     input wire joystick_data_in,
+    input wire [7:0] sysram_rdata,   // Karabas Go port: the system RAM read data register (SDRAM controller), straight to the sound system's DMA
+    input wire [11:0] joy_bits_in,   // Karabas Go port: {port 1, port 0} x {fire2, fire1, right, left, down, up}, 1 = pressed (from the MCU, instead of the PIC link)
     output wire joystick_clock_out,
     output wire col_red_b,
     output wire col_red_a,
@@ -79,6 +81,8 @@ module osca_core (
     output wire system_ram_cs,
     output wire z80_clock,
     input wire z80_m1,
+    output wire [9:0] audio_pcm_l,  // Karabas Go port: the mixer sums of the sound system (PCM, 512 = silence)
+    output wire [9:0] audio_pcm_r,
     output wire audio_left,
     output wire audio_right,
     output wire serial_tx_pin,
@@ -91,6 +95,7 @@ module osca_core (
     input wire ps2_ms_clock_in,
     output wire system_reset_out,
     output wire z80_int,
+    input wire linecop_mem_ready,     // Karabas Go port: system RAM read data valid (the line copper waits for it, see line_cop_04.v)
     input wire sdc_dout,
     output wire sdc_clk,
     output wire sdc_din
@@ -536,6 +541,22 @@ module osca_core (
     wire ywindow;
     wire [7:0] zero_red;
 
+    // Karabas Go port: one pulse on the fast clock at the start of each write strobe (cpu_write low: CPU or line copper).  The registers that were
+    // clocked by the write strobe (palette, maths unit, video registers, bitplane bases, blitter, line draw, sprite registers) are written with it.
+    reg wp_w1 = 1'b0, wp_w2 = 1'b0;
+    always @(posedge clk_fast) begin wp_w1 <= cpu_write; wp_w2 <= wp_w1; end
+    wire wp_pulse = wp_w2 & ~wp_w1;
+    wire wp_end   = ~wp_w2 & wp_w1;
+    // IRQ flag clears (port 2 bits 0..2): the flags have asynchronous CLR inputs, which the original drove from combinational decodes
+    // (write strobe & port decode & data bit): a glitch of the decode while the strobe is active (the address moving to the next cycle)
+    // clears a flag and the interrupt is lost.  Now one-tick pulses from registers, taken at the start of the write (inputs stable).
+    reg irqclr_t = 1'b0, irqclr_k = 1'b0, irqclr_m = 1'b0;
+    always @(posedge clk_fast) begin
+        irqclr_t <= wp_pulse & port_2_selected & cpu_databus_in[2];
+        irqclr_k <= wp_pulse & port_2_selected & cpu_databus_in[0];
+        irqclr_m <= wp_pulse & port_2_selected & cpu_databus_in[1];
+    end                         // the tick after the end of the strobe (the sprite register RAM is written then, as in the original)
+
     buft8 XLXI_873 (.I(cpu_databus_in[7:0]), .T(copro_vram_access), .O(outgoing_data_for_vram_tb0[7:0]));
     assign vram_wdata = outgoing_data_for_vram[7:0];
     assign vram_wdata_oe = ~XLXN_2593;
@@ -612,7 +633,7 @@ module osca_core (
     selector_2x3 XLXI_2111 (.input_a(cpus_vram_page[2:0]), .input_b(cpu_address_bus[15:13]), .output_c(cpus_vram_acc_addr[15:13]), .select_ab(all_writes_to_vram));
     fdce XLXI_969 (.C(clock_16mhz_dist), .CE(XLXN_2501), .CLR(XLXN_2337), .D(XLXN_2500), .Q(timer_irq_flag));
     vcc XLXI_1042 (.P(XLXN_2500));
-    and3b1 XLXI_1511 (.I0(cpu_write), .I1(cpu_databus_in[2]), .I2(port_2_selected), .O(XLXN_2337));
+    assign XLXN_2337 = irqclr_t;     // was and3b1 XLXI_1511 (write & data[2] & port 2) straight into the flag's asynchronous CLR
     vcc XLXI_1632 (.P(XLXN_4171));
     cb8re XLXI_2174 (.C(clock_16mhz_dist), .CE(XLXN_4171), .R(XLXN_6193), .CEO(XLXN_4167), .Q(), .TC());
     cb8cle XLXI_966 (.C(clock_16mhz_dist), .CE(XLXN_4167), .CLR(XLXN_6167), .D(timer_reload_value[7:0]), .L(XLXN_6166), .CEO(XLXN_2501), .Q(), .TC());
@@ -625,8 +646,8 @@ module osca_core (
     buft19 XLXI_2375 (.enable_lo(XLXN_2616), .in_bus(cpus_vram_acc_addr[18:0]), .out_bus(XLXN_6544_tb2[18:0]));
     buft19 XLXI_2376 (.enable_lo(XLXN_2617), .in_bus(blitter_vram_addr[18:0]), .out_bus(XLXN_6544_tb3[18:0]));
     buft19 XLXI_2377 (.enable_lo(XLXN_5921), .in_bus(linedraw_addr[18:0]), .out_bus(XLXN_6544_tb4[18:0]));
-    blitter_601 XLXI_2378 (.blit_bus_master(blitter_busmaster), .blit_pending(blit_op_pending), .blit_reg_range_selected(XLXN_4959), .clock_in(clock_16mhz_dist), .cpu_addr(cpu_address_bus[3:0]), .cpu_databus_in(cpu_databus_in[7:0]), .cpu_wr(cpu_write), .databyte_zero(blitter_zero_byte), .pause_blit(force_blit_wait), .read_phase(blitter_reading), .vram_addr(blitter_vram_addr[18:0]), .vram_read(blitter_vram_read), .vram_write(blitter_vram_wr));
-    line_draw_600 XLXI_2379 (.dev_selected(XLXN_5839), .addr_bus(cpu_address_bus[4:0]), .cpu_databus(cpu_databus_in[7:0]), .vram_datafetch(force_blit_wait), .main_clock(clock_16mhz_dist), .cpu_write(cpu_write), .ld_has_bus(linedraw_busmaster), .ld_pending(linedraw_op_pending), .vram_addr(linedraw_addr[18:0]), .vram_wr(linedraw_wr));
+    blitter_601 XLXI_2378 (.clk_fast(clk_fast), .wr_pulse(wp_pulse), .blit_bus_master(blitter_busmaster), .blit_pending(blit_op_pending), .blit_reg_range_selected(XLXN_4959), .clock_in(clock_16mhz_dist), .cpu_addr(cpu_address_bus[3:0]), .cpu_databus_in(cpu_databus_in[7:0]), .cpu_wr(cpu_write), .databyte_zero(blitter_zero_byte), .pause_blit(force_blit_wait), .read_phase(blitter_reading), .vram_addr(blitter_vram_addr[18:0]), .vram_read(blitter_vram_read), .vram_write(blitter_vram_wr));
+    line_draw_600 XLXI_2379 (.clk_fast(clk_fast), .wr_pulse(wp_pulse), .dev_selected(XLXN_5839), .addr_bus(cpu_address_bus[4:0]), .cpu_databus(cpu_databus_in[7:0]), .vram_datafetch(force_blit_wait), .main_clock(clock_16mhz_dist), .cpu_write(cpu_write), .ld_has_bus(linedraw_busmaster), .ld_pending(linedraw_op_pending), .vram_addr(linedraw_addr[18:0]), .vram_wr(linedraw_wr));
     fde #(.INIT(1'b0)) XLXI_2266 (.C(delayed_cpu_wr), .CE(port_9_selected), .D(cpu_databus_in[3]), .Q(force_50hz_VGA));
     fde #(.INIT(1'b0)) XLXI_2395 (.C(delayed_cpu_wr), .CE(port_5_selected), .D(cpu_databus_in[6]), .Q(spi_data_enable));
     fde #(.INIT(1'b0)) XLXI_2396 (.C(delayed_cpu_wr), .CE(port_5_selected), .D(cpu_databus_in[7]), .Q(spi_speed));
@@ -675,6 +696,12 @@ module osca_core (
         pal_y1 <= XLXN_7421;  pal_y2 <= pal_y1;  pal_y_q <= pal_y2;
     end
     wire pal_fall = pal_w2 & ~pal_w1;                      // START of the (delayed) write strobe: the bus of a phase-accurate Z80 is valid then, but no longer at the end of the strobe; use the values of the first low tick (pal_*1)
+    // maths unit (Karabas Go port): its writes are synchronous like the palette's: the address / data / selects of the first tick of the strobe
+    reg [8:0] mt_a1 = 9'd0;  reg [7:0] mt_d1 = 8'd0;  reg mt_blk1 = 1'b0, mt_rng1 = 1'b0, mt_p2a1 = 1'b0, mt_p291 = 1'b0, mt_p281 = 1'b0;
+    always @(posedge clk_fast) begin
+        mt_a1 <= cpu_address_bus[8:0];  mt_d1 <= cpu_databus_in[7:0];  mt_blk1 <= XLXN_5609;  mt_rng1 <= scale_range_sel;
+        mt_p2a1 <= port_2a_selected;  mt_p291 <= port_29_selected;  mt_p281 <= port_28_selected;
+    end
     wire pal_en0 = pal_fall & pal_x1;
     wire pal_en1 = pal_fall & pal_y1;
     reg [7:0] pw_n = 8'd0;  reg [15:0] pw2 = 16'd0, pw3 = 16'd0, pw4 = 16'd0, pw5 = 16'd0;
@@ -738,7 +765,7 @@ module osca_core (
     and2b1 XLXI_2498 (.I0(linecop_busy), .I1(XLXN_6849), .O(XLXN_6916));
     fdrs XLXI_2497 (.C(clock_16mhz_dist), .D(all_dma_done), .R(scanline_tc), .S(XLXN_6916), .Q(all_dma_done));
     inv XLXI_1669 (.I(sprite_system_busy), .O(XLXN_4435));
-    sprite_system513 XLXI_2849 (.clk_in_16mhz(clock_16mhz_dist), .cpu_databus(cpu_databus_in[7:0]), .cpu_sel_spr_ctrl(cpu_sel_vreg_sprctrl), .cpu_sprite_reg_sel(XLXN_8010), .cpu_wr(cpu_write), .global_sprite_enable(sprite_enable), .last_16_cycles(last_sixteen_clocks), .last_sprite(last_sprite), .modified_linecount(line_count[8:0]), .reset_sprite_gen(XLXN_4435), .slb_access_enable(slb_blkram_en), .slb_byte_select(slb_latch_byte_select), .slb_read_addr(slb_addr[7:0]), .slb_wr_zero_in(slb_zero_wr_en), .sprite_pixel(sprite_pixel[7:0]), .spr_pixel_data_in(sprpixel_data_in[7:0]), .spr_priority(sprite_priority_mode), .spr_pri_option(sprite_priority_option), .spr_reg_addr_in(cpu_address_bus[8:0]), .spr_sram_addr(spr_hw_addrbus[16:0]));
+    sprite_system513 XLXI_2849 (.clk_fast(clk_fast), .wr_pulse(wp_pulse), .wr_pulse_end(wp_end), .clk_in_16mhz(clock_16mhz_dist), .cpu_databus(cpu_databus_in[7:0]), .cpu_sel_spr_ctrl(cpu_sel_vreg_sprctrl), .cpu_sprite_reg_sel(XLXN_8010), .cpu_wr(cpu_write), .global_sprite_enable(sprite_enable), .last_16_cycles(last_sixteen_clocks), .last_sprite(last_sprite), .modified_linecount(line_count[8:0]), .reset_sprite_gen(XLXN_4435), .slb_access_enable(slb_blkram_en), .slb_byte_select(slb_latch_byte_select), .slb_read_addr(slb_addr[7:0]), .slb_wr_zero_in(slb_zero_wr_en), .sprite_pixel(sprite_pixel[7:0]), .spr_pixel_data_in(sprpixel_data_in[7:0]), .spr_priority(sprite_priority_mode), .spr_pri_option(sprite_priority_option), .spr_reg_addr_in(cpu_address_bus[8:0]), .spr_sram_addr(spr_hw_addrbus[16:0]));
     or4 XLXI_2855 (.I0(cpu_address_bus[6]), .I1(cpu_address_bus[7]), .I2(cpu_address_bus[8]), .I3(vregs_selected_200_3ff), .O(XLXN_5795));
     and2b2 XLXI_2897 (.I0(cpu_address_bus[0]), .I1(palette_selected_000_1ff), .O(XLXN_2828));
     and2b1 XLXI_2898 (.I0(palette_selected_000_1ff), .I1(cpu_address_bus[0]), .O(XLXN_7421));
@@ -810,7 +837,9 @@ module osca_core (
     buf_x XLXI_3125 (.I(keyboard_data_in), .O(port_1_values[5]));
     buf_x XLXI_3126 (.I(mouse_clock_in), .O(port_1_values[6]));
     buf_x XLXI_3127 (.I(mouse_data_in), .O(port_1_values[7]));
-    buf_x XLXI_3179 [5:0] (.I(joystick_bits[5:0]), .O(port_5_values[5:0]));
+    // Karabas Go port: the joystick bits come from the MCU (joy_bits_in), the port selected with bit 0 of port $03; serjoy2 (PIC link) is unused
+    wire [5:0] joy_sel_bits = joystick_select ? joy_bits_in[11:6] : joy_bits_in[5:0];
+    buf_x XLXI_3179 [5:0] (.I(joy_sel_bits[5:0]), .O(port_5_values[5:0]));
     buf_x XLXI_3180 (.I(serial_byte_rec_flag), .O(port_5_values[6]));
     buf_x XLXI_3181 (.I(serial_out_busy), .O(port_5_values[7]));
     buf_x XLXI_3257 (.I(raster_line_match), .O(port_1_values[3]));
@@ -848,7 +877,7 @@ module osca_core (
     bufe8 XLXI_1353 (.E(XLXN_9540), .I(expansion_pins_in[7:0]), .O(data_for_cpu_multiplex_tb15[7:0]));
     or2 XLXI_3258 (.I0(port_6_selected), .I1(port_e_selected), .O(XLXN_9540));
     bufe8 XLXI_3335 (.E(port_b_selected), .I(port_b_bits[7:0]), .O(data_for_cpu_multiplex_tb16[7:0]));
-    bitmapcore_603 XLXI_3336 (.bitmaplbwren_out(bm_lbwren), .bitmap_linedone_out(bm_linedone), .bm_lbaddrinc_en(bm_lbaddrincen), .chunky_mode(dualpf_en), .clk16mhz_in(clock_16mhz_dist), .cpu_addr(cpu_address_bus[7:0]), .cpu_databus(cpu_databus_in[7:0]), .cpu_write(cpu_write), .enable_expand(pfabanksel), .new_scanline_in(scanline_first_cycle), .no_of_planes(yhws_a[2:0]), .planar_pixel(bm_pixel[7:0]), .regs_ab_select(pfabmbufsel), .start_linegen_in(linegen_go), .stop_slb_writes(right_border_stop), .tilemap_mode_in(tilemap_mode), .vram_bmaddr_out(bm_vram_addr[18:0]), .vram_databus(vram_databus_input[7:0]), .vreg_range(XLXN_5663), .vrt_in(vrt_line));
+    bitmapcore_603 XLXI_3336 (.clk_fast(clk_fast), .wr_pulse(wp_pulse), .bitmaplbwren_out(bm_lbwren), .bitmap_linedone_out(bm_linedone), .bm_lbaddrinc_en(bm_lbaddrincen), .chunky_mode(dualpf_en), .clk16mhz_in(clock_16mhz_dist), .cpu_addr(cpu_address_bus[7:0]), .cpu_databus(cpu_databus_in[7:0]), .cpu_write(cpu_write), .enable_expand(pfabanksel), .new_scanline_in(scanline_first_cycle), .no_of_planes(yhws_a[2:0]), .planar_pixel(bm_pixel[7:0]), .regs_ab_select(pfabmbufsel), .start_linegen_in(linegen_go), .stop_slb_writes(right_border_stop), .tilemap_mode_in(tilemap_mode), .vram_bmaddr_out(bm_vram_addr[18:0]), .vram_databus(vram_databus_input[7:0]), .vreg_range(XLXN_5663), .vrt_in(vrt_line));
     or2 XLXI_1997 (.I0(cpu_address_bus[8]), .I1(vregs_selected_200_3ff), .O(XLXN_5663));
     nand5 XLXI_2856 (.I0(spr_ram_write_enable), .I1(video_ram_selected), .I2(XLXN_8273), .I3(vreg_reading), .I4(rom_selected), .O(XLXN_3165));
     or2b1 XLXI_2946 (.I0(cpu_read), .I1(XLXN_8271), .O(XLXN_8273));
@@ -937,12 +966,17 @@ module osca_core (
     or4 XLXI_3457 (.I0(XLXN_10316), .I1(XLXN_10315), .I2(XLXN_10314), .I3(XLXN_10312), .O(port_24_27_selected));
     ofd XLXI_2692 (.C(clock_16mhz_dist), .D(XLXN_7677), .Q(audio_left));
     ofd XLXI_2691 (.C(clock_16mhz_dist), .D(XLXN_7676), .Q(audio_right));
-    sound_system_3_07 XLXI_3483 (.audio_irq(audio_irq_flag), .audio_ram_address(audio_addr[18:0]), .aud_chan_status(port_8_values[7:0]), .aud_out_l(XLXN_7677), .aud_out_r(XLXN_7676), .begin_audio_ops(commence_dma_ops), .chans_enable_wr_en(port_8_selected), .cpu_addr0(cpu_address_bus[0]), .cpu_addr1(cpu_address_bus[1]), .cpu_addr2(cpu_address_bus[2]), .cpu_addr3(cpu_address_bus[3]), .cpu_addr_hi(cpu_address_bus[15:8]), .cpu_write_in(delayed_cpu_wr), .databus_in(cpu_databus_in[7:0]), .dma_done(audio_dma_done), .loc_extend_regs(port_24_27_selected), .master_clock(clock_16mhz_dist), .new_scanline(scanline_tc), .pan_reg_selected(port_22_selected), .select_aud_regs(XLXN_10526), .sel_clr_loop_regs(port_2_selected));
+    // Karabas Go port: while the audio DMA owns the bus (not the CPU: busack, not the line copper) the sound system takes the system RAM data
+    // straight from the SDRAM controller's output register instead of through the shared data bus (a one-tick path in the worst case)
+    (* keep = "true" *) wire       snd_dma_sel = !cpu_busack && !linecop_busy;      // keep: XST must not merge this multiplexer into the shared data bus logic
+    (* keep = "true" *) wire [7:0] snd_cpu_bus = cpu_databus_in[7:0];
+    (* keep = "true" *) wire [7:0] snd_databus = snd_dma_sel ? sysram_rdata : snd_cpu_bus;
+    sound_system_3_07 XLXI_3483 (.audio_irq(audio_irq_flag), .audio_ram_address(audio_addr[18:0]), .aud_chan_status(port_8_values[7:0]), .aud_out_l(XLXN_7677), .aud_pcm_l(audio_pcm_l), .aud_pcm_r(audio_pcm_r), .aud_out_r(XLXN_7676), .begin_audio_ops(commence_dma_ops), .chans_enable_wr_en(port_8_selected), .cpu_addr0(cpu_address_bus[0]), .cpu_addr1(cpu_address_bus[1]), .cpu_addr2(cpu_address_bus[2]), .cpu_addr3(cpu_address_bus[3]), .cpu_addr_hi(cpu_address_bus[15:8]), .cpu_write_in(delayed_cpu_wr), .databus_in(snd_databus), .dma_done(audio_dma_done), .loc_extend_regs(port_24_27_selected), .master_clock(clock_16mhz_dist), .new_scanline(scanline_tc), .pan_reg_selected(port_22_selected), .select_aud_regs(XLXN_10526), .sel_clr_loop_regs(port_2_selected));
     or5b1 XLXI_1465 (.I0(cpu_address_bus[4]), .I1(cpu_address_bus[5]), .I2(cpu_address_bus[6]), .I3(cpu_address_bus[7]), .I4(cpu_ioreq), .O(XLXN_10526));
     m2_1 XLXI_3484 (.D0(audio_addr[16]), .D1(linecop_pc[16]), .S0(linecop_busy), .O(XLXN_7051));
     m2_1 XLXI_3485 (.D0(audio_addr[17]), .D1(linecop_pc[17]), .S0(linecop_busy), .O(XLXN_10198));
     m2_1 XLXI_3486 (.D0(audio_addr[18]), .D1(linecop_pc[18]), .S0(linecop_busy), .O(XLXN_10191));
-    line_cop_04 XLXI_3488 (.cpu_databus(cpu_databus_in[7:0]), .last_sl_cycles(last_sixteen_clocks), .linecop_addr(linecop_addr[18:0]), .linecop_busy(linecop_busy), .linecop_start(start_linecop), .lsrw_pc(linecop_pc[18:0]), .main_clock(clock_16mhz_dist), .reg_addr(linecop_reg_addr[10:0]), .reg_wr(linecop_wr), .scanline(line_count[8:0]), .vrt_last_cycle(XLXN_10553));
+    line_cop_04 XLXI_3488 (.cpu_databus(cpu_databus_in[7:0]), .last_sl_cycles(last_sixteen_clocks), .linecop_addr(linecop_addr[18:0]), .linecop_busy(linecop_busy), .linecop_start(start_linecop), .lsrw_pc(linecop_pc[18:0]), .main_clock(clock_16mhz_dist), .reg_addr(linecop_reg_addr[10:0]), .reg_wr(linecop_wr), .scanline(line_count[8:0]), .vrt_last_cycle(XLXN_10553), .mem_ready(linecop_mem_ready));
     and2 XLXI_2599 (.I0(scanline_tc), .I1(vrt_line), .O(XLXN_10553));
     fde #(.INIT(1'b0)) XLXI_3517 (.C(delayed_cpu_wr), .CE(port_c_selected), .D(XLXN_10577), .Q(baud_sel_a));
     fde #(.INIT(1'b0)) XLXI_3518 (.C(delayed_cpu_wr), .CE(port_c_selected), .D(cpu_databus_in[1]), .Q(baud_sel_b));
@@ -955,8 +989,8 @@ module osca_core (
     obuf XLXI_1356 (.I(XLXN_10660), .O(ps2_kb_clock_out));
     obuf XLXI_1354 (.I(XLXN_10664), .O(ps2_ms_clock_out));
     ibuf XLXI_1777 (.I(ps2_ms_data_in), .O(mouse_data_in));
-    and3 XLXI_3494 (.I0(delayed_cpu_wr), .I1(port_2_selected), .I2(cpu_databus_in[1]), .O(XLXN_10569));
-    and3 XLXI_3493 (.I0(delayed_cpu_wr), .I1(port_2_selected), .I2(cpu_databus_in[0]), .O(XLXN_10568));
+    assign XLXN_10569 = irqclr_m;    // was and3 XLXI_3494 (delayed write & port 2 & data[1])
+    assign XLXN_10568 = irqclr_k;    // was and3 XLXI_3493 (delayed write & port 2 & data[0])
     ps2interface506 XLXI_3575 (.data_out(keyboard_data[7:0]), .irq_clr(XLXN_10568), .irq_out(keyboard_irq_flag), .main_divider_tc(main_counter_tc), .manual_clock(port_3_outputs[4]), .ps2_clk(keyboard_clock_in), .ps2_data(keyboard_data_in), .sys_clk(clock_16mhz_dist));
     ibuf XLXI_1775 (.I(ps2_kb_data_in), .O(keyboard_data_in));
     ibuf XLXI_3583 (.I(ps2_kb_clock_in), .O(keyboard_clock_in));
@@ -986,14 +1020,14 @@ module osca_core (
     buf_x XLXI_3631 (.I(port_1_outputs[3]), .O(video_irq_enable));
     buf_x XLXI_3632 (.I(port_1_outputs[6]), .O(serial_irq_enable));
     buf_x XLXI_1480 (.I(port_1_outputs[7]), .O(legacy_master_irq_en));
-    video_registers_659 XLXI_3640 (.dbg_ce(dbg_vrce), .allow_virq(legacy_video_irq_en), .cpuaccvideopage_out(cpus_vram_page[5:0]), .cpu_addr_in(cpu_address_bus[7:0]), .cpu_databus(cpu_databus_in[7:0]), .cpu_sel_spr_ctrl(cpu_sel_vreg_sprctrl), .cpu_sprite_base_addr(cpu_sprite_bank[4:0]), .cpu_wr_line(cpu_write), .dualpfen_out(dualpf_en), .global_video_enable(video_enable), .hi_res(hi_res_mode), .interlace(interlace_mode), .latchayhws_out(latchyhws_a), .latchbyhws_out(latchyhws_b), .linecop_addr(linecop_addr[18:0]), .linecount_in(line_count[8:0]), .live_palette(live_palette), .main_clock_in(clock_16mhz_dist), .new_scanline_in(init_gfx_line_build), .palette_wr_sel(palette_write_select), .pfablockbanksel_out(pfabanksel), .pfabufbmbufsel_out(pfabmbufsel), .pfbblockbanksel_out(pfbbanksel), .pfbbufsel_out(pfbbufsel), .playfield1req_in(playfield), .rasterirq_status_out(raster_line_match), .tilemodeen_out(tilemap_mode), .tile_extend(extended_tile_mode), .tile_pri_swap(switch_tile_priority), .vidreg_range_in(vregs_selected_200_3ff), .wideborder_out(wide_border), .xhws_out(xhws[3:0]), .xstartcoarse_out(xstart_coarse[3:0]), .xstopcoarse_out(xstop_coarse[3:0]), .yhwsavalue(yhws_a[3:0]), .yhwsbvalue(yhws_b[3:0]), .y_window_position(y_window_pos[7:0]));
+    video_registers_659 XLXI_3640 (.clk_fast(clk_fast), .wr_pulse(wp_pulse), .dbg_ce(dbg_vrce), .allow_virq(legacy_video_irq_en), .cpuaccvideopage_out(cpus_vram_page[5:0]), .cpu_addr_in(cpu_address_bus[7:0]), .cpu_databus(cpu_databus_in[7:0]), .cpu_sel_spr_ctrl(cpu_sel_vreg_sprctrl), .cpu_sprite_base_addr(cpu_sprite_bank[4:0]), .cpu_wr_line(cpu_write), .dualpfen_out(dualpf_en), .global_video_enable(video_enable), .hi_res(hi_res_mode), .interlace(interlace_mode), .latchayhws_out(latchyhws_a), .latchbyhws_out(latchyhws_b), .linecop_addr(linecop_addr[18:0]), .linecount_in(line_count[8:0]), .live_palette(live_palette), .main_clock_in(clock_16mhz_dist), .new_scanline_in(init_gfx_line_build), .palette_wr_sel(palette_write_select), .pfablockbanksel_out(pfabanksel), .pfabufbmbufsel_out(pfabmbufsel), .pfbblockbanksel_out(pfbbanksel), .pfbbufsel_out(pfbbufsel), .playfield1req_in(playfield), .rasterirq_status_out(raster_line_match), .tilemodeen_out(tilemap_mode), .tile_extend(extended_tile_mode), .tile_pri_swap(switch_tile_priority), .vidreg_range_in(vregs_selected_200_3ff), .wideborder_out(wide_border), .xhws_out(xhws[3:0]), .xstartcoarse_out(xstart_coarse[3:0]), .xstopcoarse_out(xstop_coarse[3:0]), .yhwsavalue(yhws_a[3:0]), .yhwsbvalue(yhws_b[3:0]), .y_window_position(y_window_pos[7:0]));
     and3 XLXI_3641 (.I0(legacy_master_irq_en), .I1(legacy_video_irq_en), .I2(raster_line_match), .O(XLXN_10856));
     spi_sch5 XLXI_2015 (.busy(spi_busy), .byte_received(received_spi_byte[7:0]), .byte_to_write(cpu_databus_in[7:0]), .clock_16mhz(clock_16mhz_dist), .cpu_wr(delayed_cpu_wr), .port_selected(port_a_selected), .speed_select(spi_speed), .spi_clock(spi_clock_out), .spi_input(XLXN_6347), .spi_out(XLXN_6506));
     ibuf XLXI_2288 (.I(sdc_dout), .O(XLXN_6347));
     and2 XLXI_2349 (.I0(spi_data_enable), .I1(XLXN_6506), .O(XLXN_6507));
     obuf XLXI_2290 (.I(XLXN_6507), .O(sdc_din));
     obuf XLXI_2289 (.I(spi_clock_out), .O(sdc_clk));
-    maths_assist_102 XLXI_3644 (.address(cpu_address_bus[8:0]), .data_in(cpu_databus_in[7:0]), .latch_blockram(XLXN_5609), .math_reg_range(scale_range_sel), .port_28_sel(port_28_selected), .port_29_sel(port_29_selected), .port_2a_sel(port_2a_selected), .reg_wr_clock(maths_wr), .scaled(mulres[15:0]), .sys_clock(clock_16mhz_dist));
+    maths_assist_102 XLXI_3644 (.clk_fast(clk_fast), .wr_pulse(wp_pulse), .address_q(mt_a1), .data_q(mt_d1), .latch_blockram_q(mt_blk1), .math_reg_range_q(mt_rng1), .port_2a_sel_q(mt_p2a1), .port_29_sel_q(mt_p291), .port_28_sel_q(mt_p281), .address(cpu_address_bus[8:0]), .data_in(cpu_databus_in[7:0]), .latch_blockram(XLXN_5609), .math_reg_range(scale_range_sel), .port_28_sel(port_28_selected), .port_29_sel(port_29_selected), .port_2a_sel(port_2a_selected), .reg_wr_clock(maths_wr), .scaled(mulres[15:0]), .sys_clock(clock_16mhz_dist));
     inv XLXI_2902 (.I(maths_table_selected_600_7ff), .O(XLXN_5609));
     and4b4 XLXI_1793 (.I0(cpu_address_bus[4]), .I1(cpu_address_bus[5]), .I2(cpu_address_bus[6]), .I3(cpu_address_bus[7]), .O(cabhnzero));
     and3b1 XLXI_1910 (.I0(vregs_selected_200_3ff), .I1(XLXN_5004), .I2(cabhnzero), .O(scale_range_sel));

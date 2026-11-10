@@ -1,5 +1,7 @@
 // generated from bitmapcore_603.sch
 module bitmapcore_603 (
+    input wire clk_fast,          // Karabas Go port: the registers written by the CPU / line copper run on the fast clock,
+    input wire wr_pulse,          // enabled by one pulse at the start of each write (they were clocked by the write strobe)
     input wire [7:0] vram_databus,
     output wire [7:0] planar_pixel,
     input wire [7:0] cpu_databus,
@@ -127,8 +129,8 @@ module bitmapcore_603 (
     and2 XLXI_711 (.I0(regwren), .I1(XLXN_48), .O(XLXN_45));
     nor2 XLXI_712 (.I0(cpu_addr[1]), .I1(cpu_addr[0]), .O(XLXN_48));
     inv XLXI_715 (.I(cpu_write), .O(inv_cpu_wr));
-    ram16x8d XLXI_717 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .WCLK(inv_cpu_wr), .WE(XLXN_42), .DPO(bitplane_base[15:8]), .SPO());
-    ram16x8d XLXI_718 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .WCLK(inv_cpu_wr), .WE(XLXN_45), .DPO(bitplane_base[7:0]), .SPO());
+    ram16x8d XLXI_717 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .WCLK(clk_fast), .WE((XLXN_42) & wr_pulse), .DPO(bitplane_base[15:8]), .SPO());
+    ram16x8d XLXI_718 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .WCLK(clk_fast), .WE((XLXN_45) & wr_pulse), .DPO(bitplane_base[7:0]), .SPO());
     and3b1 XLXI_734 (.I0(cpu_addr[1]), .I1(regwren), .I2(cpu_addr[0]), .O(XLXN_42));
     and3b1 XLXI_735 (.I0(cpu_addr[0]), .I1(regwren), .I2(cpu_addr[1]), .O(XLXN_41));
     and3b2 XLXI_749 (.I0(vreg_range), .I1(cpu_addr[7]), .I2(cpu_addr[6]), .O(regwren));
@@ -153,16 +155,16 @@ module bitmapcore_603 (
     ftrse XLXI_656 (.C(clk16mhz_in), .CE(XLXN_1805), .R(XLXN_1886), .S(XLXN_2363), .T(reached_count), .Q(bitmaplbwren_out));
     vcc XLXI_658 (.P(XLXN_1805));
     and2 XLXI_852 (.I0(bitmapbusy), .I1(chunky_mode), .O(XLXN_2363));
-    fdce XLXI_747 (.C(inv_cpu_wr), .CE(reset_count), .CLR(XLXN_2524), .D(XLXN_2058), .Q(XLXN_2518));
+    fdce XLXI_747 (.C(clk_fast), .CE((reset_count) & wr_pulse), .CLR(XLXN_2524), .D(XLXN_2058), .Q(XLXN_2518));
     vcc XLXI_748 (.P(XLXN_2058));
     m2_1 XLXI_851 (.D0(planar_lbaddrinc_en), .D1(bitmaplbwren_out), .S0(chunky_mode), .O(bm_lbaddrinc_en));
     fd XLXI_856 (.C(clk16mhz_in), .D(bitmapbusy), .Q(XLXN_2385));
     and2b1 XLXI_857 (.I0(bitmapbusy), .I1(XLXN_2385), .O(bitmap_linedone_out));
-    ram16x3d XLXI_858 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[2:0]), .DPO(bitplane_base[18:16]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .SPO(), .WCLK(inv_cpu_wr), .WE(XLXN_41));
+    ram16x3d XLXI_858 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[2:0]), .DPO(bitplane_base[18:16]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .SPO(), .WCLK(clk_fast), .WE((XLXN_41) & wr_pulse));
     and2 XLXI_867 (.I0(new_scanline_in), .I1(XLXN_2524), .O(XLXN_2521));
     or3 XLXI_889 (.I0(mod_inc_offset), .I1(XLXN_2461), .I2(XLXN_2459), .O(bm_srcaddr_inc_en));
     fdrs XLXI_903 (.C(clk16mhz_in), .D(XLXN_2524), .R(new_scanline_in), .S(XLXN_2518), .Q(XLXN_2524));
-    fd8re XLXI_868 (.C(inv_cpu_wr), .CE(XLXN_2405), .D(cpu_databus[7:0]), .R(XLXN_2573), .Q(modulo_val[7:0]));
+    fd8re XLXI_868 (.C(clk_fast), .CE((XLXN_2405) & wr_pulse), .D(cpu_databus[7:0]), .R(XLXN_2573), .Q(modulo_val[7:0]));
     cb8cled XLXI_869 (.C(clk16mhz_in), .CE(XLXN_2419), .CLR(XLXN_2573), .D(modulo_val[7:0]), .L(XLXN_2572), .UP(XLXN_2573), .CEO(), .Q(), .TC(XLXN_2426));
     fdre XLXI_872 (.C(clk16mhz_in), .CE(mod_inc_offset), .D(XLXN_2415), .R(XLXN_2573), .Q(XLXN_2419));
     inv XLXI_877 (.I(XLXN_2419), .O(XLXN_2415));

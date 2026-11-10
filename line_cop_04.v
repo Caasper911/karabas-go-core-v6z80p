@@ -10,9 +10,11 @@ module line_cop_04 (
     input wire [8:0] scanline,
     input wire last_sl_cycles,
     output wire [18:0] lsrw_pc,
-    input wire [18:0] linecop_addr
+    input wire [18:0] linecop_addr,
+    input wire mem_ready            // Karabas Go port: 1 = the system RAM data of the current address is valid (the SDRAM controller's rd_valid)
 );
 
+    wire state_zero_r, state_one_r, stall;    // Karabas Go port: the wait for the SDRAM (see XLXI_25)
     wire [7:0] high_byte;
     wire inc_waitline;
     wire linecop_enabled;
@@ -101,10 +103,17 @@ module line_cop_04 (
     inv XLXI_121 (.I(XLXN_317), .O(XLXN_318));
     or4 XLXI_148 (.I0(inc_waitline), .I1(XLXN_313), .I2(set_waitline), .I3(linecop_start), .O(XLXN_278));
     and2 XLXI_120 (.I0(next_instruction), .I1(last_sl_cycles), .O(XLXN_313));
-    cb2re XLXI_24 (.C(main_clock), .CE(linecop_busy), .R(XLXN_307), .CEO(), .Q0(XLXN_67), .Q1(XLXN_68), .TC());
-    d2_4e XLXI_25 (.A0(XLXN_67), .A1(XLXN_68), .E(linecop_busy), .D0(state_zero), .D1(state_one), .D2(state_two), .D3());
+    cb2re XLXI_24 (.C(main_clock), .CE(linecop_busy & ~stall), .R(XLXN_307), .CEO(), .Q0(XLXN_67), .Q1(XLXN_68), .TC());
+    // Karabas Go port: the list is in the SDRAM.  The original reads it in state 0 (high byte) and state 1 (low byte) with the data taken at the end
+    // of the clk16 cycle (6 ticks of 96 MHz): a sequential list is read ahead by the controller, but after a jump (a write with restart, bit 12)
+    // the word at the new PC needs a full SDRAM access.  The copper now waits there: while a read state has no valid data the state counter
+    // stops and the state signals of the logic are held off (nothing is latched); the address (lsrw_pc) stays.
+    assign stall = linecop_busy & (state_zero_r | state_one_r) & ~mem_ready;
+    assign state_zero = state_zero_r & ~stall;
+    assign state_one  = state_one_r & ~stall;
+    d2_4e XLXI_25 (.A0(XLXN_67), .A1(XLXN_68), .E(linecop_busy), .D0(state_zero_r), .D1(state_one_r), .D2(state_two), .D3());
     or2 XLXI_116 (.I0(next_instruction), .I1(linecop_start), .O(XLXN_307));
-    buf_x XLXI_122 (.I(state_zero), .O(lsrw_pc[0]));
+    buf_x XLXI_122 (.I(state_zero_r), .O(lsrw_pc[0]));   // the address of the read state, also while it waits
     and2 XLXI_154 (.I0(high_byte[4]), .I1(state_two), .O(XLXN_422));
     and2 XLXI_87 (.I0(high_byte[7]), .I1(state_one), .O(XLXN_304));
     buf_x XLXI_196 (.I(linecop_addr[0]), .O(linecop_enabled));

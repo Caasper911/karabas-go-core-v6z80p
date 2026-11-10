@@ -1,5 +1,7 @@
 // generated from blitter_601.sch
 module blitter_601 (
+    input wire clk_fast,          // Karabas Go port: the registers written by the CPU / line copper run on the fast clock,
+    input wire wr_pulse,          // enabled by one pulse at the start of each write (they were clocked by the write strobe)
     output wire blit_pending,
     output wire vram_read,
     output wire read_phase,
@@ -122,7 +124,7 @@ module blitter_601 (
     and2 XLXI_641 (.I0(dec_height_en), .I1(XLXN_1392), .O(XLXN_1378));
     cb8cled height_counter (.C(clock_in), .CE(dec_height_en), .CLR(XLXN_735), .D(register_values[7:0]), .L(forceload_height), .UP(XLXN_735), .CEO(XLXN_1392), .Q(), .TC());
     fdr XLXI_677 (.C(clock_in), .D(XLXN_1378), .R(reloading_regs), .Q(blit_done));
-    ram16x8d XLXI_494 (.A0(cpu_addr[0]), .A1(cpu_addr[1]), .A2(cpu_addr[2]), .A3(XLXN_953), .D(cpu_databus_in[7:0]), .DPRA0(XLXN_1058), .DPRA1(regload_b), .DPRA2(XLXN_1063), .DPRA3(XLXN_953), .WCLK(inv_cpu_wr), .WE(XLXN_1427), .DPO(register_values[7:0]), .SPO());
+    ram16x8d XLXI_494 (.A0(cpu_addr[0]), .A1(cpu_addr[1]), .A2(cpu_addr[2]), .A3(XLXN_953), .D(cpu_databus_in[7:0]), .DPRA0(XLXN_1058), .DPRA1(regload_b), .DPRA2(XLXN_1063), .DPRA3(XLXN_953), .WCLK(clk_fast), .WE((XLXN_1427) & wr_pulse), .DPO(register_values[7:0]), .SPO());
     fdrs XLXI_502 (.C(clock_in), .D(reloading_regs), .R(blit_commence), .S(XLXN_1642), .Q(reloading_regs));
     cb4re XLXI_496 (.C(clock_in), .CE(XLXN_1148), .R(XLXN_992), .CEO(), .Q0(regload_a), .Q1(regload_b), .Q2(regload_c), .Q3(), .TC());
     or2 XLXI_519 (.I0(XLXN_1082), .I1(regload_a), .O(XLXN_1058));
@@ -156,7 +158,7 @@ module blitter_601 (
     m2_1 XLXI_712 (.D0(blitreg_eight[0]), .D1(blitreg_eight[2]), .S0(wr_ff1), .O(XLXN_1514));
     m2_1 XLXI_713 (.D0(blitreg_eight[1]), .D1(blitreg_eight[3]), .S0(wr_ff1), .O(src_dst_modsign));
     inv XLXI_747 (.I(cpu_wr), .O(inv_cpu_wr));
-    fdc XLXI_766 (.C(inv_cpu_wr), .CLR(reloading_regs), .D(XLXN_1641), .Q(XLXN_1642));
+    fdce XLXI_766 (.C(clk_fast), .CE(wr_pulse), .CLR(reloading_regs), .D(XLXN_1641), .Q(XLXN_1642));
     and4 XLXI_767 (.I0(cpu_addr[0]), .I1(cpu_addr[1]), .I2(cpu_addr[2]), .I3(blit_reg_range_selected), .O(XLXN_1641));
     fd XLXI_777 (.C(clock_in), .D(XLXN_1225), .Q(wr_ff1));
     fds_1 XLXI_779 (.C(clock_in), .D(XLXN_1218), .S(blit_done), .Q(XLXN_1225));
@@ -164,7 +166,7 @@ module blitter_601 (
     ud_counter_883 XLXI_782 (.set_low(low_addr_in[7:0]), .set_hi(hi_addr_in[7:0]), .latch_low(XLXN_456), .latch_hi(XLXN_457), .clk_enable(rd_ff1), .clock_source(clock_in), .up_or_down(blit_asc_desc), .async_clr(XLXN_467), .set_msbs(src_msbs[2:0]), .latch_msbs(XLXN_457), .addr_out(source_address[18:0]));
     ud_counter_883 XLXI_783 (.set_low(low_addr_in[7:0]), .set_hi(hi_addr_in[7:0]), .latch_low(XLXN_458), .latch_hi(XLXN_1628), .clk_enable(wr_lag_ff), .clock_source(clock_in), .up_or_down(blit_asc_desc), .async_clr(XLXN_467), .set_msbs(dst_msbs[2:0]), .latch_msbs(XLXN_1628), .addr_out(destination_address[18:0]));
     and5b3 XLXI_687 (.I0(cpu_addr[2]), .I1(cpu_addr[1]), .I2(cpu_addr[0]), .I3(cpu_addr[3]), .I4(blit_reg_range_selected), .O(XLXN_1406));
-    fd8re XLXI_681 (.C(inv_cpu_wr), .CE(XLXN_1406), .D(cpu_databus_in[7:0]), .R(XLXN_1452), .Q(blitreg_eight[7:0]));
+    fd8re XLXI_681 (.C(clk_fast), .CE((XLXN_1406) & wr_pulse), .D(cpu_databus_in[7:0]), .R(XLXN_1452), .Q(blitreg_eight[7:0]));
     gnd XLXI_692 (.G(XLXN_1452));
     buf_x XLXI_817 (.I(blitreg_eight[6]), .O(blit_asc_desc));
     adsu19 XLXI_854 (.A(src_dst_for_modsum[18:0]), .ADD(blit_asc_desc), .B(srcdest_mod[18:0]), .C(addrplusmod[18:0]), .CI(blit_asc_desc));
@@ -178,8 +180,8 @@ module blitter_601 (
     selector_2x3 XLXI_852 (.input_a(default_src_msbs[2:0]), .input_b(addrplusmod[18:16]), .output_c(src_msbs[2:0]), .select_ab(blit_pending));
     selector_2x3 XLXI_853 (.input_a(default_dst_msbs[2:0]), .input_b(addrplusmod[18:16]), .output_c(dst_msbs[2:0]), .select_ab(blit_pending));
     and2 XLXI_775 (.I0(blitreg_eight[7]), .I1(databyte_zero), .O(inhibit_write));
-    fd4re XLXI_791 (.C(inv_cpu_wr), .CE(reg219_sel), .D0(cpu_databus_in[0]), .D1(cpu_databus_in[1]), .D2(cpu_databus_in[2]), .D3(XLXN_1694), .R(XLXN_1694), .Q0(XLXN_1695), .Q1(default_src_msbs[1]), .Q2(default_src_msbs[2]), .Q3());
-    fd4re XLXI_792 (.C(inv_cpu_wr), .CE(reg_21a_sel), .D0(cpu_databus_in[0]), .D1(cpu_databus_in[1]), .D2(cpu_databus_in[2]), .D3(XLXN_1694), .R(XLXN_1694), .Q0(XLXN_1698), .Q1(default_dst_msbs[1]), .Q2(default_dst_msbs[2]), .Q3());
+    fd4re XLXI_791 (.C(clk_fast), .CE((reg219_sel) & wr_pulse), .D0(cpu_databus_in[0]), .D1(cpu_databus_in[1]), .D2(cpu_databus_in[2]), .D3(XLXN_1694), .R(XLXN_1694), .Q0(XLXN_1695), .Q1(default_src_msbs[1]), .Q2(default_src_msbs[2]), .Q3());
+    fd4re XLXI_792 (.C(clk_fast), .CE((reg_21a_sel) & wr_pulse), .D0(cpu_databus_in[0]), .D1(cpu_databus_in[1]), .D2(cpu_databus_in[2]), .D3(XLXN_1694), .R(XLXN_1694), .Q0(XLXN_1698), .Q1(default_dst_msbs[1]), .Q2(default_dst_msbs[2]), .Q3());
     or2 XLXI_804 (.I0(XLXN_1698), .I1(blitreg_eight[5]), .O(default_dst_msbs[0]));
     or2 XLXI_803 (.I0(XLXN_1695), .I1(blitreg_eight[4]), .O(default_src_msbs[0]));
     gnd XLXI_793 (.G(XLXN_1694));

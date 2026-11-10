@@ -27,6 +27,7 @@ start:		di
 		out (0x00),a
 		ld a,1
 		ld (0x0207),a			; sprites on
+		ld c,8				; exactly 8 steps, then stop: the frame at a fixed time does not depend on the CPU's speed
 frame:		in a,(7)
 		bit 0,a
 		jr nz,frame
@@ -43,4 +44,6 @@ mv:		inc (ix+0)
 		ld de,0x0400
 		ld bc,96
 		ldir
-		jr frame
+		dec c
+		jr nz,frame
+stop:		jr stop

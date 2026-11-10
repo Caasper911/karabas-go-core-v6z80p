@@ -86,6 +86,9 @@ module karabas_go_osca_top (
 
     // ---------------------------------------------------------------- MCU: USB keyboard scan codes
     wire [7:0] kb_scancode;  wire kb_scancode_upd;
+    wire [12:0] joy_l, joy_r;            // kg_mcu: bit 0 on, 1 up, 2 down, 3 left, 4 right, 5 start, 6 a, 7 b, 8 c, 9 x, 10 y, 11 z, 12 mode
+    reg  [11:0] joy_s1 = 12'd0, joy_s2 = 12'd0;      // kg_mcu runs on clk96: two clk16 registers before the core reads them
+    always @(posedge clk16) begin joy_s1 <= {joy_r[7], joy_r[6], joy_r[4], joy_r[3], joy_r[2], joy_r[1], joy_l[7], joy_l[6], joy_l[4], joy_l[3], joy_l[2], joy_l[1]}; joy_s2 <= joy_s1; end
     wire [2:0] unused_ms_b;
     wire        rom_wr;
     wire [31:0] rom_addr;
@@ -101,7 +104,7 @@ module karabas_go_osca_top (
         .KB_STATUS(), .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
         .KB_SCANCODE(kb_scancode), .KB_SCANCODE_UPD(kb_scancode_upd), .XT_SCANCODE(), .XT_SCANCODE_UPD(),
         .PS2_COMMAND(16'h0000), .PS2_COMMAND_WR(1'b0),
-        .JOY_L(), .JOY_R(), .BTNS(),
+        .JOY_L(joy_l), .JOY_R(joy_r), .BTNS(),
         .RTC_A(8'h00), .RTC_DI(8'h00), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
         .UART_RX_DATA(), .UART_RX_IDX(), .UART_TX_DATA(8'h00), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
         .UART_DLM(8'h00), .UART_DLL(8'h00), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
@@ -126,7 +129,7 @@ module karabas_go_osca_top (
     // ---------------------------------------------------------------- SoC
     wire [20:0] ma;  wire [15:0] md_o;  wire md_oe;
     wire col_red_a, col_red_b, col_red_c, col_red_d, col_green_a, col_green_b, col_green_c, col_green_d;
-    wire col_blue_a, col_blue_b, col_blue_c, col_blue_d, horizontal_sync, tv_sync, audio_left, audio_right;
+    wire col_blue_a, col_blue_b, col_blue_c, col_blue_d, horizontal_sync, tv_sync, audio_left, audio_right;  wire [9:0] audio_pcm_l, audio_pcm_r;
     wire kb_clk_pull, kb_dat_pull, kb_clk_line, kb_dat_line;
     wire sdc_clk, sdc_cs, sdc_din, sdc_pow, system_reset_out;
 
@@ -170,14 +173,15 @@ module karabas_go_osca_top (
         .col_green_a(col_green_a), .col_green_b(col_green_b), .col_green_c(col_green_c), .col_green_d(col_green_d),
         .col_blue_a(col_blue_a), .col_blue_b(col_blue_b), .col_blue_c(col_blue_c), .col_blue_d(col_blue_d),
         .horizontal_sync(horizontal_sync), .tv_sync(tv_sync),
-        .audio_left(audio_left), .audio_right(audio_right),
+        .audio_left(audio_left), .audio_right(audio_right), .audio_pcm_l(audio_pcm_l), .audio_pcm_r(audio_pcm_r),
         .ps2_kb_clock_in(kb_clk_line), .ps2_kb_data_in(kb_dat_line),
         .ps2_ms_clock_in(1'b1), .ps2_ms_data_in(1'b1),
         .ps2_kb_clock_out(kb_clk_pull), .ps2_kb_data_out(kb_dat_pull),
         .ps2_ms_clock_out(), .ps2_ms_data_out(),
         .sdc_clk(sdc_clk), .sdc_cs(sdc_cs), .sdc_din(sdc_din), .sdc_pow(sdc_pow), .sdc_dout(SD_DO),
         .serial_tx_pin(), .serial_rx_pin(1'b1),
-        .joystick_clock_out(), .joystick_data_in(1'b1),        // TODO: serjoy2 protocol
+        .joystick_clock_out(), .joystick_data_in(1'b1),        // the PIC link (serjoy2) is not used
+        .joy_bits(joy_s2),   // OSCA port 1 = JOY_R, port 0 = JOY_L (synchronised to clk16)
         .ld_active(ld_act_r), .ld_addr(ld_addr_r), .ld_data(ld_data_r), .ld_wr(ld_wr_r),   // boot image from the MCU
         .jumper_nmi(1'b1), .jumper_reset(run & ~load_s[1] & init_s[1]), .jumper_vga(1'b0),   // 0 = VGA video mode
         .expansion_pin_a(), .expansion_pin_b(),
@@ -346,8 +350,11 @@ module karabas_go_osca_top (
     assign FT_OE_N = 1'b1;  assign FT_SPI_CS_N = 1'b1;  assign FT_SPI_SCK = 1'b0;
 
     // audio
-    wire [15:0] pcm_l, pcm_r;
-    kg_osca_audio u_aud (.clk(clk16), .pdm_l(audio_left), .pdm_r(audio_right), .left(pcm_l), .right(pcm_r));
+    // the DAC gets the mixer sums of OSCA's sound system directly (4 channels, 512 = silence), not its 1-bit sigma-delta outputs converted back:
+    // (sum - 512) * 32 = +-16384 (-6 dB of full scale)
+    reg  [15:0] pcm_l = 16'h0000, pcm_r = 16'h0000;
+    wire [10:0] pcm_dl = {1'b0, audio_pcm_l} - 11'd512, pcm_dr = {1'b0, audio_pcm_r} - 11'd512;
+    always @(posedge clk16) begin pcm_l <= {pcm_dl, 5'b00000}; pcm_r <= {pcm_dr, 5'b00000}; end
     kg_pcm5102 #(.DIV_BITS(1)) u_dac (.clk(clk16), .reset(~run), .left(pcm_l), .right(pcm_r),
                                       .din(DAC_DAT), .bck(DAC_BCK), .lrck(DAC_LRCK));
     assign DAC_MUTE = 1'b1;

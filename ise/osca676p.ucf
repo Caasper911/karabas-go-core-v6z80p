@@ -179,6 +179,11 @@ INST "ld_wr_r*"   TNM = "GRP_CHK";
 # the loader / self test signals reach OSCA's clk16 registers only while OSCA is held in reset (static while it runs)
 TIMESPEC "TS_chk_c16" = FROM "GRP_CHK" TO "TNM_c16" TIG;
 
+# The SDRAM controller next to its pins (left edge of the die, SDR_* from top to bottom): its command / address decisions go into IOB registers,
+# a route across the die cost ~4 ns of the 10.4 ns.
+INST "soc/sdram/*" AREA_GROUP = "AG_SDRAM";
+AREA_GROUP "AG_SDRAM" RANGE = CLOCKREGION_X0Y0:CLOCKREGION_X0Y3;   # the left half of the die
+
 # T80pa runs on clk96.  Its core (u0) is clock-enabled by CEN = CEN_p & ~CEN_pol, once per Z80 clock (6 ticks): core-to-core paths are multi-cycle (62.5 ns).
 # The bus registers of the wrapper (WR_n, RD_n, MREQ_n, IORQ_n, DI_Reg, Wait_s, IntCycleD_n) change at CEN_n, half a Z80 clock (3 ticks) after the core: 31.2 ns both ways.
 # CEN_pol is in no group: it gates the core's clock enable on the next tick and must meet the 10.4 ns period (an earlier constraint covered all of u_z80 with 62.5 ns).
@@ -230,14 +235,113 @@ INST "soc/core/XLXI_3644/*" TNM = "GRP_MATHS";
 TIMESPEC "TS_maths_t80" = FROM "GRP_MATHS" TO "GRP_T80" 31.2 ns;
 TIMESPEC "TS_maths_sdram" = FROM "GRP_MATHS" TO "GRP_SDRAM" 31.2 ns;   # (CPU writes carry the CPU's own data, not the table's)
 INST "soc/core/pal_*" TNM = "GRP_PALPIPE";
+INST "soc/core/mt_*" TNM = "GRP_PALPIPE";    # the maths unit's write capture (osca_core.v), used like the palette's: at the start of a write
 TIMESPEC "TS_maths_t80w"  = FROM "GRP_MATHS" TO "GRP_T80W" 31.2 ns;
 TIMESPEC "TS_maths_pal"   = FROM "GRP_MATHS" TO "GRP_PALPIPE" 31.2 ns;
+TIMESPEC "TS_maths_sound" = FROM "GRP_MATHS" TO "GRP_SOUND" 31.2 ns;   # (the sound system takes only CPU writes / its DMA bytes from the bus, never the product)
+TIMESPEC "TS_maths_membc" = FROM "GRP_MATHS" TO "GRP_MEMBC" 31.2 ns;   # (the product reaches the bus only on CPU reads; video RAM writes carry the writer's data)
+# PS/2 keyboard: the lines (asynchronous, kHz) and the received byte are read by the CPU through a port: no one-tick path into its registers
+INST "soc/core/XLXI_3575/*" TNM = "GRP_PS2";
+INST "u_kbd/*" TNM = "GRP_PS2";
+TIMESPEC "TS_ps2_t80"  = FROM "GRP_PS2" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_ps2_t80w" = FROM "GRP_PS2" TO "GRP_T80W" 31.2 ns;
 # The audio DMA address reaches the bus only while the FPGA owns it (the CPU is in BUSACK and fetches no opcode): to the T80 core (the opcode path
 # DInst -> IR) it is no one-tick path.  CPU reads of the sound registers go through DI_Reg (GRP_T80W), not covered here.
 INST "soc/core/XLXI_3483/*" TNM = "GRP_SOUND";
 TIMESPEC "TS_sound_t80" = FROM "GRP_SOUND" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_sound_t80w"  = FROM "GRP_SOUND" TO "GRP_T80W" 31.2 ns;    # (the same: the DMA address is on the bus only while the CPU is in BUSACK)
+# The line copper starts after the audio DMA in the same FPGA bus window (start_linecop = XLXN_6849 & audio_dma_done): its register address
+# reaches the address decoders only while the CPU is in BUSACK, so it is no one-tick path into the CPU.
+INST "soc/core/XLXI_3488/*" TNM = "GRP_LINECOP";
+TIMESPEC "TS_linecop_t80"  = FROM "GRP_LINECOP" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_linecop_t80w" = FROM "GRP_LINECOP" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_linecop_sdwd" = FROM "GRP_LINECOP" TO "GRP_SDWD" 31.2 ns;   # (the line copper writes only video registers, never the system RAM)
+# The line copper busy flag (XLXI_22, inverted) changes on its start and on its wait commands, never on the clk16 edge that starts a write
+# (reg_wr is registered one tick after the write command is decoded): the write capture registers sample it only with the write strobe.
+INST "soc/core/XLXI_3488/XLXI_22*" TNM = "GRP_LCBUSY";
+TIMESPEC "TS_lcbusy_pal" = FROM "GRP_LCBUSY" TO "GRP_PALPIPE" 31.2 ns;
+INST "soc/sdram/pw_data*" TNM = "GRP_SDWD";   # SDRAM write data registers (only CPU writes use them; the DMA address path to addr_q stays one tick)
+TIMESPEC "TS_sound_sdram_wd" = FROM "GRP_SOUND" TO "GRP_SDWD" 31.2 ns;
+TIMESPEC "TS_sound_pal"      = FROM "GRP_SOUND" TO "GRP_PALPIPE" 31.2 ns;   # (palette writes carry the CPU's / line copper's data)
+# The sound system takes from the shared data bus only CPU writes to its registers (the CPU's data) and its DMA bytes (now straight from the
+# SDRAM controller): the video RAM read data (CPU reads of video RAM) never reach it.
+INST "soc/mem/vram_rdata2*" TNM = "GRP_VRD2";
+TIMESPEC "TS_vrd2_sound" = FROM "GRP_VRD2" TO "GRP_SOUND" 31.2 ns;
+# the core's clocked reset changes once (leaving the reset): no one-tick path into the CPU core
+INST "soc/core/XLXI_3319/Q*" TNM = "GRP_CRST";   # Q and its duplicates (-register_duplication)
+# (it changes only on scanline_tc, a few lines after reset_req: no one-tick path to anything; its duplicates feed the bus decoders)
+TIMEGRP "GRP_ALLSYNC" = FFS RAMS;
+TIMESPEC "TS_crst_all" = FROM "GRP_CRST" TO "GRP_ALLSYNC" 31.2 ns;
+# osca_core: snd_databus = audio DMA owns the bus ? sysram_rdata (the SDRAM controller's register, one-tick path, stays constrained) : snd_cpu_bus.
+# Through snd_cpu_bus the sound system takes only CPU writes to its registers: the system RAM read data on that branch is no one-tick path.
+NET "soc/core/snd_cpu_bus*" TPTHRU = "TP_SNDCPU";
+TIMESPEC "TS_sdram_sndcpu" = FROM "GRP_SDRAM" THRU "TP_SNDCPU" TO "GRP_SOUND" 31.2 ns;
+# CPU writes: address and data of T80pa are valid 3 ticks before WR# falls (2 more with the delayed WR#), the controller captures after that
+TIMESPEC "TS_t80_sdwd"       = FROM "GRP_T80" TO "GRP_SDWD" 31.2 ns;
+TIMESPEC "TS_t80w_sdwd"      = FROM "GRP_T80W" TO "GRP_SDWD" 31.2 ns;   # (MREQ# / IORQ# are set in T1, before the address / data are)
+# The line copper PC changes at the end of state 2 (or of state 1 of a WAIT), i.e. when a register write ENDS, never when one starts: the write
+# capture registers (palette, maths: GRP_PALPIPE) take the bus at the start of the write.  (Its register address is loaded on the edge that starts
+# the write: that one-tick path stays constrained.)
+INST "soc/core/XLXI_3488/XLXI_216*" TNM = "GRP_LCPC";
+INST "soc/core/XLXI_3488/XLXI_217*" TNM = "GRP_LCPC";
+TIMESPEC "TS_lcpc_pal" = FROM "GRP_LCPC" TO "GRP_PALPIPE" 31.2 ns;
 # The SPI receive register is read with IN (through DI_Reg), never fetched as an opcode: no one-tick path into the T80 core
 INST "soc/core/XLXI_2015/*" TNM = "GRP_SPI";
 TIMESPEC "TS_spi_t80" = FROM "GRP_SPI" TO "GRP_T80" 31.2 ns;
+# ... nor into DI_Reg (latched at CEN_n, 4 ticks after the clk16 edge), nor into the palette pipeline / the SDRAM write data (CPU writes carry the CPU's data)
+TIMESPEC "TS_spi_t80w"  = FROM "GRP_SPI" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_spi_pal"   = FROM "GRP_SPI" TO "GRP_PALPIPE" 31.2 ns;
+TIMESPEC "TS_spi_sdram" = FROM "GRP_SPI" TO "GRP_SDRAM" 31.2 ns;
+
+# Registers written by the CPU / the line copper that used to be clocked by the write strobe (osca_core.v wp_pulse; video registers, bitplane
+# bases, blitter, line draw, sprite registers): they are loaded only by wp_pulse, two ticks after the strobe has begun, from address / data /
+# selects that are stable from before the strobe (CPU) or from the cycle before (line copper): two ticks from every source except the pulse
+# registers themselves (wp_w1 / wp_w2 -> enable is a real one-tick path).
+INST "soc/core/XLXI_3640/XLXI_762*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_154*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_868*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_869*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_870*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_146*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_205*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_682*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_960*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_961*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_344*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_995*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_1075*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_1076*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_881*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_882*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_861*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_878*" TNM = "GRP_WREGS";
+# (trimmed by synthesis) INST "soc/core/XLXI_3640/XLXI_920*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_1078*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_911*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_912*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_1089*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_1090*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/XLXI_1091*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3640/rclr*" TNM = "GRP_WREGS";   # raster IRQ flag clear pulse
+INST "soc/core/irqclr_*" TNM = "GRP_WREGS";          # timer / keyboard / mouse IRQ flag clear pulses
+INST "soc/core/XLXI_2849/sprite_control_reg_ram*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2849/XLXI_895*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3336/XLXI_717*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3336/XLXI_718*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3336/XLXI_747*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3336/XLXI_858*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_3336/XLXI_868*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2378/XLXI_494*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2378/XLXI_766*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2378/XLXI_681*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2378/XLXI_791*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2378/XLXI_792*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2379/XLXI_322*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2379/XLXI_328*" TNM = "GRP_WREGS";
+INST "soc/core/XLXI_2379/XLXI_327*" TNM = "GRP_WREGS";
+INST "soc/core/wp_w*" TNM = "GRP_WP";
+TIMEGRP "GRP_SRC_NOWP" = FFS RAMS EXCEPT "GRP_WP";
+TIMESPEC "TS_to_wregs" = FROM "GRP_SRC_NOWP" TO "GRP_WREGS" 20.8 ns;
+
 # No relaxation from T80pa to the SDRAM controller / the SRAM wrapper: both look at the CPU bus on every tick of clk96 (address change detection, slot
 # capture), a path longer than one tick lets them see a half-settled address or strobe.  (TS_t80_sdram / TS_t80_mem = 31.2 ns were removed.)

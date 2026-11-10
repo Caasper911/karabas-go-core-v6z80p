@@ -86,7 +86,6 @@ module kg_osca_mem #(
     reg        pend_v = 1'b0;
     wire wr_b = !spr_wr_n;                       // used at tick 3 only
     wire wr_c = pend_v | !vram_wr_n;             // used at tick 5 only
-    wire [20:0] ma_bc = t_en ? t_ma : go_b ? {4'b1000, spr_addr} : {2'b00, vram_addr};   // slots B / C and the self test
 
     reg [LAT:0] c1 = 0, c2 = 0, cs = 0;
 `ifdef KG_MEMLOG
@@ -126,8 +125,9 @@ module kg_osca_mem #(
         wr_pre <= 1'b0;
         // ma: the display fetch address (slot A, one tick after the clk16 edge) enters the last multiplexer stage; the other sources (slots B / C,
         // the self test) have two ticks or are static
-        if (go_a && !t_en) ma <= {2'b00, vram_addr};
-        else if (go_b || go_c || t_en) ma <= ma_bc;
+        // (written as one 2-level choice per bit: the display address passes a single LUT in front of the IOB flip-flop; same behaviour as
+        //  "slot A: vram_addr, slot B: spr_addr, slot C: vram_addr, self test: t_ma")
+        if (go_a || go_b || go_c || t_en) ma <= t_en ? t_ma : go_b ? {4'b1000, spr_addr} : {2'b00, vram_addr};
         if (go_a) begin                                              // display fetch read (speculative)
             md_oe <= 1'b0; mrd0_n <= 1'b0;
         end

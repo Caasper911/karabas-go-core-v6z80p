@@ -38,6 +38,7 @@ module kg_osca_soc (
     output wire horizontal_sync, tv_sync,
     // audio
     output wire audio_left, audio_right,
+    output wire [9:0] audio_pcm_l, audio_pcm_r,   // the mixer sums (PCM, 512 = silence): straight to the DAC
     // PS/2 (separate in/out lines: out = 1 pulls the line low)
     input  wire ps2_kb_clock_in, ps2_kb_data_in, ps2_ms_clock_in, ps2_ms_data_in,
     output wire ps2_kb_clock_out, ps2_kb_data_out, ps2_ms_clock_out, ps2_ms_data_out,
@@ -48,6 +49,7 @@ module kg_osca_soc (
     input  wire serial_rx_pin,
     output wire joystick_clock_out,
     input  wire joystick_data_in,
+    input  wire [11:0] joy_bits,           // {port 1, port 0} x {fire2, fire1, right, left, down, up}, 1 = pressed
     // MCU ROM loader (kg_mcu ROMLOAD_*, clk_mem domain): while ld_active the loader owns the system RAM
     // port and the core must be held in reset by the caller.  File offset = Z80 address ($1000 = FLOS).
     input  wire        ld_active,
@@ -105,11 +107,12 @@ module kg_osca_soc (
     wire        sdram_wait_n;
     assign dbg = {system_reset_out, z80_wait, sdram_wait_n, busak_n, wr_n_bus, rd_n_bus, iorq_n_bus, mreq_n_bus, m1_n, d_bus, a_bus};
     wire [18:0] linecop_pc_o;
+    wire        sdram_rd_valid;      // system RAM read data valid (CPU WAIT, line copper wait)
 
     osca_core core (
         .clk_fast(clk_mem),
         .dbg_core(dbg3), .dbg_vr(dbg5), .dbg_wce(dbg6), .dbg_bus(dbg7), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata), .dbg_fixpal(dbg_fixpal), .dbg_pwlog(dbg8),
-        .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .vram_addr_out(vram_addr_out),
+        .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .linecop_mem_ready(sdram_rd_valid), .vram_addr_out(vram_addr_out),
         .spr_wdata(spr_wdata), .spr_wdata_oe(spr_wdata_oe), .spr_rdata(spr_rdata),
         .spr_ram_wr(spr_ram_wr), .spr_ram_rd(spr_ram_rd), .spr_addrbus(spr_addrbus),
         .vram_rd(vram_rd), .vram_wr(vram_wr),
@@ -129,14 +132,14 @@ module kg_osca_soc (
         .system_ram_a17(system_ram_a17), .system_ram_a18(system_ram_a18), .system_ram_cs(system_ram_cs),
         .clock_16mhz(clk16),
         .system_reset_out(system_reset_out),
-        .audio_left(audio_left), .audio_right(audio_right),
+        .audio_left(audio_left), .audio_right(audio_right), .audio_pcm_l(audio_pcm_l), .audio_pcm_r(audio_pcm_r),
         .ps2_kb_clock_in(ps2_kb_clock_in), .ps2_kb_data_in(ps2_kb_data_in),
         .ps2_ms_clock_in(ps2_ms_clock_in), .ps2_ms_data_in(ps2_ms_data_in),
         .ps2_kb_clock_out(ps2_kb_clock_out), .ps2_kb_data_out(ps2_kb_data_out),
         .ps2_ms_clock_out(ps2_ms_clock_out), .ps2_ms_data_out(ps2_ms_data_out),
         .sdc_clk(sdc_clk), .sdc_cs(sdc_cs), .sdc_din(sdc_din), .sdc_pow(sdc_pow), .sdc_dout(sdc_dout),
         .serial_tx_pin(serial_tx_pin), .serial_rx_pin(serial_rx_pin),
-        .joystick_clock_out(joystick_clock_out), .joystick_data_in(joystick_data_in),
+        .joystick_clock_out(joystick_clock_out), .joystick_data_in(joystick_data_in), .joy_bits_in(joy_bits), .sysram_rdata(sys_rdata),
         .eeprom_data_in(eeprom_data_in), .pic_link_rb7(pic_link_rb7),
         .pic_link_rb1(pic_link_rb1), .pic_link_ra5(pic_link_ra5),
         .jumper_nmi(jumper_nmi), .jumper_reset(jumper_reset), .jumper_vga(jumper_vga),
@@ -173,11 +176,11 @@ module kg_osca_soc (
     wire [7:0]  sys_wd_m   = ld_active ? ld_data : d_bus;
 `ifdef KG_SYSRAM_MODEL
     kg_sysram_model sysram (.clk(clk_mem), .addr(sys_addr_m), .cs_n(sys_cs_m), .wr_n(sys_wr_m), .wdata(sys_wd_m), .dma(~busak_n), .rdata(sys_rdata));
-    wire sdram_rd_valid = 1'b1;
+    assign sdram_rd_valid = 1'b1;
     assign sdram_init_done = 1'b1;
     assign sd_ba = 2'b00; assign sd_a = 13'd0; assign sd_dqm = 2'b11; assign sd_ras_n = 1'b1; assign sd_cas_n = 1'b1; assign sd_we_n = 1'b1;
 `else
-    wire sdram_rd_valid, sdram_wr_pending;
+    wire sdram_wr_pending;
     kg_osca_sdram sdram (
         .clk(clk_mem), .reset(sdram_reset),
         .addr(sys_addr_m), .cs_n(sys_cs_m), .wr_n(sys_wr_m), .wdata(sys_wd_m),

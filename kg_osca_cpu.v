@@ -175,7 +175,11 @@ module kg_osca_cpu (
     wire wr_now = cpu_owns && !cpu_wr_q;
     wire ram_oe = !ram_cs_n && !rd_n_bus;
 
-    assign d_bus = fpga_d_oe           ? fpga_d :
+    // while the FPGA's DMA owns the bus the system RAM data come first (one multiplexer level): the audio DMA takes them one tick after they
+    // can arrive (worst case of the SDRAM controller), into clk16 registers of the core
+    wire dma_ram = !cpu_owns && ram_oe && !fpga_d_oe;
+    assign d_bus = dma_ram             ? ram_d  :
+                   fpga_d_oe           ? fpga_d :
                    wr_now              ? cpu_do_q :
                    (lastw && rd_n_bus) ? do_q   :
                    ram_oe              ? ram_d  : 8'h00;

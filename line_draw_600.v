@@ -1,5 +1,7 @@
 // generated from line_draw_600.sch
 module line_draw_600 (
+    input wire clk_fast,          // Karabas Go port: the registers written by the CPU / line copper run on the fast clock,
+    input wire wr_pulse,          // enabled by one pulse at the start of each write (they were clocked by the write strobe)
     output wire [18:0] vram_addr,
     input wire [7:0] cpu_databus,
     input wire main_clock,
@@ -92,7 +94,7 @@ module line_draw_600 (
     fdr XLXI_277 (.C(main_clock), .D(XLXN_856), .R(end_ld), .Q(XLXN_672));
     and2 XLXI_278 (.I0(XLXN_554), .I1(ld_running), .O(XLXN_856));
     fd XLXI_279 (.C(main_clock), .D(XLXN_860), .Q(addr_chen));
-    ram_dual_8in16outx16 XLXI_322 (.data_in(cpu_databus[7:0]), .data_out(reg_values[15:0]), .lsb_wr_en(lsb_wren), .msb_wr_en(msb_wren), .read_addr(readsel[3:0]), .write_addr(addr_bus[4:1]), .write_clock(XLXN_1142));
+    ram_dual_8in16outx16 XLXI_322 (.data_in(cpu_databus[7:0]), .data_out(reg_values[15:0]), .lsb_wr_en(lsb_wren & wr_pulse), .msb_wr_en(msb_wren & wr_pulse), .read_addr(readsel[3:0]), .write_addr(addr_bus[4:1]), .write_clock(clk_fast));
     buf_x XLXI_326 (.I(force_reg_d), .O(setup_sel[0]));
     or2 XLXI_332 (.I0(force_reg_d), .I1(force_reg_c), .O(setup_sel[1]));
     selector_2x4 XLXI_334 (.input_a(setup_sel[3:0]), .input_b(active_sel[3:0]), .output_c(readsel[3:0]), .select_ab(ld_pending));
@@ -112,9 +114,9 @@ module line_draw_600 (
     fd XLXI_239 (.C(main_clock), .D(force_reg_c), .Q(force_reg_a));
     and2 XLXI_14 (.I0(dev_selected), .I1(addr_bus[0]), .O(msb_wren));
     and2b1 XLXI_13 (.I0(addr_bus[0]), .I1(dev_selected), .O(lsb_wren));
-    fdce_1 XLXI_328 (.C(cpu_write), .CE(XLXN_1031), .CLR(force_reg_d), .D(XLXN_264), .Q(XLXN_288));
+    fdce XLXI_328 (.C(clk_fast), .CE((XLXN_1031) & wr_pulse), .CLR(force_reg_d), .D(XLXN_264), .Q(XLXN_288));
     and4b1 XLXI_245 (.I0(addr_bus[4]), .I1(addr_bus[2]), .I2(addr_bus[1]), .I3(msb_wren), .O(XLXN_1031));
-    fde_1 XLXI_327 (.C(cpu_write), .CE(XLXN_1031), .D(addr_bus[3]), .Q(reg_buffer_sel));
+    fde XLXI_327 (.C(clk_fast), .CE((XLXN_1031) & wr_pulse), .D(addr_bus[3]), .Q(reg_buffer_sel));
     add19 XLXI_363 (.A(add_input[18:0]), .B(vram_addr[18:0]), .CI(XLXN_120), .C(XLXN_1166[18:0]));
     fd19re XLXI_364 (.C(main_clock), .CE(vram_upden), .D(XLXN_1166[18:0]), .Q(vram_addr[18:0]), .R(force_reg_d));
     buf_x XLXI_365 [15:0] (.I(reg_values[15:0]), .O(add_input[15:0]));

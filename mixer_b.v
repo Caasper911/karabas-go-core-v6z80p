@@ -22,6 +22,7 @@
 module mixer_b(
     input clock_in,
     output carry_out,
+    output [9:0] sum_out,      // Karabas Go port: the sum of the four channels itself (PCM, 512 = silence)
     input [7:0] chn_a,
     input [7:0] chn_b,
     input [7:0] chn_c,
@@ -39,6 +40,8 @@ always @(posedge clock_in)
 pwm_acc[10:0] <= {1'b0,pwm_acc[9:0]} + {chn_a_en?chn_a:8'h80} + {chn_b_en?chn_b:8'h80} + {chn_c_en?chn_c:8'h80} + {chn_d_en?chn_d:8'h80};
 
 assign carry_out = pwm_acc[10];
+
+assign sum_out = {2'b00, chn_a_en ? chn_a : 8'h80} + {2'b00, chn_b_en ? chn_b : 8'h80} + {2'b00, chn_c_en ? chn_c : 8'h80} + {2'b00, chn_d_en ? chn_d : 8'h80};
 
 endmodule
 

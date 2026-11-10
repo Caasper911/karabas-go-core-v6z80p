@@ -12,6 +12,8 @@ module sound_system_3_07 (
     input wire cpu_addr2,
     input wire cpu_addr3,
     output wire aud_out_l,
+    output wire [9:0] aud_pcm_l,     // Karabas Go port: the mixer sums (PCM) next to the 1-bit outputs
+    output wire [9:0] aud_pcm_r,
     output wire aud_out_r,
     input wire select_aud_regs,
     input wire [7:0] cpu_addr_hi,
@@ -331,8 +333,8 @@ module sound_system_3_07 (
     buf_x XLXI_411 [6:0] (.I(chan_b_output[6:0]), .O(chan_b[6:0]));
     inv XLXI_422 (.I(chan_d_output[7]), .O(chan_d[7]));
     buf_x XLXI_414 [6:0] (.I(chan_d_output[6:0]), .O(chan_d[6:0]));
-    mixer_b XLXI_1521 (.clock_in(master_clock), .chn_a_en(audio_pan[4]), .chn_b_en(audio_pan[5]), .chn_c_en(audio_pan[6]), .chn_d_en(audio_pan[7]), .chn_a(chan_a[7:0]), .chn_b(chan_b[7:0]), .chn_c(chan_c[7:0]), .chn_d(chan_d[7:0]), .carry_out(aud_out_r));
-    mixer_b XLXI_1522 (.clock_in(master_clock), .chn_a_en(audio_pan[0]), .chn_b_en(audio_pan[1]), .chn_c_en(audio_pan[2]), .chn_d_en(audio_pan[3]), .chn_a(chan_a[7:0]), .chn_b(chan_b[7:0]), .chn_c(chan_c[7:0]), .chn_d(chan_d[7:0]), .carry_out(aud_out_l));
+    mixer_b XLXI_1521 (.clock_in(master_clock), .chn_a_en(audio_pan[4]), .chn_b_en(audio_pan[5]), .chn_c_en(audio_pan[6]), .chn_d_en(audio_pan[7]), .chn_a(chan_a[7:0]), .chn_b(chan_b[7:0]), .chn_c(chan_c[7:0]), .chn_d(chan_d[7:0]), .carry_out(aud_out_r), .sum_out(aud_pcm_r));
+    mixer_b XLXI_1522 (.clock_in(master_clock), .chn_a_en(audio_pan[0]), .chn_b_en(audio_pan[1]), .chn_c_en(audio_pan[2]), .chn_d_en(audio_pan[3]), .chn_a(chan_a[7:0]), .chn_b(chan_b[7:0]), .chn_c(chan_c[7:0]), .chn_d(chan_d[7:0]), .carry_out(aud_out_l), .sum_out(aud_pcm_l));
     ram16x4d XLXI_1343 (.A0(cpu_addr2), .A1(cpu_addr3), .A2(XLXN_1649), .A3(XLXN_1649), .D0(databus_in[0]), .D1(databus_in[1]), .D2(databus_in[2]), .D3(databus_in[3]), .DPRA0(phase_c), .DPRA1(phase_d), .DPRA2(XLXN_1649), .DPRA3(XLXN_1649), .WCLK(cpu_write_in), .WE(XLXN_1638), .DPO0(volume_level[0]), .DPO1(volume_level[1]), .DPO2(volume_level[2]), .DPO3(volume_level[3]), .SPO0(), .SPO1(), .SPO2(), .SPO3());
     ram16x2d XLXI_1344 (.A0(cpu_addr2), .A1(cpu_addr3), .A2(XLXN_1649), .A3(XLXN_1649), .D0(databus_in[4]), .D1(databus_in[5]), .DPRA0(phase_c), .DPRA1(phase_d), .DPRA2(XLXN_1649), .DPRA3(XLXN_1649), .WCLK(cpu_write_in), .WE(XLXN_1638), .DPO0(volume_level[4]), .DPO1(volume_level[5]), .SPO0(), .SPO1());
     ram16x1d XLXI_1350 (.A0(cpu_addr2), .A1(cpu_addr3), .A2(XLXN_1649), .A3(XLXN_1649), .D(databus_in[6]), .DPRA0(phase_c), .DPRA1(phase_d), .DPRA2(XLXN_1649), .DPRA3(XLXN_1649), .WCLK(cpu_write_in), .WE(XLXN_1638), .DPO(volume_level[6]), .SPO());

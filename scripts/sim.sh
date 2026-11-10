@@ -4,15 +4,18 @@
 #   scripts/sim.sh run <cfg> <image.hex> <outdir> [ms]   run one image (frames and run.log go to <outdir>)
 #   scripts/sim.sh regress [--cfg real] [--only a,b]     run the regression and compare with golden/*.png (scripts/regress.py)
 #   scripts/sim.sh unit                       SDRAM controller against the timing-checking SDRAM model (iverilog)
-# Environment: BUILD (default <repo>/build), IMG_BYTES (default 49152), SIM_MS (default 1000, build-time default; +simms=N overrides at run time).
+# Environment: BUILD (default <repo>/build), IMG_BYTES (default 65536), SIM_MS (default 1000, build-time default; +simms=N overrides at run time),
+#   KG_CPU (t80pa = the T80pa bus model, default; tv80 = tv80s), KG_EXTRA_DEFS (more Verilog defines).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${BUILD:-$ROOT/build}"
-IMG_BYTES="${IMG_BYTES:-49152}"
+IMG_BYTES="${IMG_BYTES:-65536}"
 SIM_MS="${SIM_MS:-1000}"
 JOBS="${JOBS:-$(nproc)}"
+# CPU model: the T80pa bus model (kg_tv80pa.v, the phases of the board's T80pa) by default; KG_CPU=tv80 builds the old tv80s configuration
+if [ "${KG_CPU:-t80pa}" = tv80 ]; then CPU_DEFS="-DKG_CPU_TV80"; else CPU_DEFS="-DKG_CPU_T80PA -DKG_CPU_TV80PA"; fi
 VFLAGS=(--binary --timing -Wno-fatal -Wno-lint -Wno-style -Wno-WIDTH -Wno-MULTIDRIVEN -Wno-UNOPTFLAT
-        -DKG_CPU_TV80 -DTV80_REFRESH ${KG_EXTRA_DEFS:-} --top-module tb_boot -O1 -j "$JOBS" -GSIM_MS="$SIM_MS" -GIMG_BYTES="$IMG_BYTES")
+        $CPU_DEFS -DTV80_REFRESH ${KG_EXTRA_DEFS:-} --top-module tb_boot -O1 -j "$JOBS" -GSIM_MS="$SIM_MS" -GIMG_BYTES="$IMG_BYTES")
 
 design_files() {   # the design and the testbench models, relative to the directory given as $1
   ( cd "$1" && ls *.v | grep -vE '^(osca_pal\.v|karabas_go_osca_top\.v)$|^tb_' ; ls tv80/*.v; echo tb_sdram_model.v )

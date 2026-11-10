@@ -79,6 +79,25 @@ module tb_kg_osca_sdram;
             block_refresh = 0;
             $display("HINT-STREAM: 600 sequential reads, mismatches=%0d, max latency=%0d ticks, reads slower than 1 tick=%0d", errs - e0, mx, slow);
         end
+        // ---- WRITE-THEN-READ: the word is cached (read first), then written and read back 0..6 ticks after the strobe, the controller
+        //      kept busy by a read of another word or a read-ahead started just before the write (the write waits behind it)
+        begin : wtr
+            integer e0, k; e0 = errs;
+            for (n = 0; n < 600; n = n + 1) begin
+                ad = 19'h20000 + ({$random(seed)} % 2048);
+                block_refresh = n[0]; hint = ad + 19'd2;
+                do_read(ad, 0);
+                do_read(ad ^ 19'd1, 0);
+                if (n[1]) begin @(posedge clk); #1; addr = ad + 19'd64; end        // start a read of another word (no wait for it)
+                do_write(ad, $random(seed));
+                wait_ticks({$random(seed)} % 7);
+                do_read(ad, 0);
+                do_read(ad ^ 19'd1, 0);
+                block_refresh = 0;
+                wait_ticks(20);
+            end
+            $display("WRITE-THEN-READ: 600 writes into cached words, mismatches=%0d", errs - e0);
+        end
         sdram.report;
         if (errs == 0 && sdram.viol == 0 && over11 == 0) $display("PASS"); else $display("FAIL");
         $finish;

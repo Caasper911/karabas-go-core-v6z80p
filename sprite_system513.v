@@ -1,5 +1,8 @@
 // generated from sprite_system513.sch
 module sprite_system513 (
+    input wire clk_fast,          // Karabas Go port: the registers written by the CPU / line copper run on the fast clock,
+    input wire wr_pulse,
+    input wire wr_pulse_end,      // one pulse after the END of each write strobe: the sprite register RAM was written at the end (CLKA = cpu_wr)          // enabled by one pulse at the start of each write (they were clocked by the write strobe)
     input wire [7:0] cpu_databus,
     input wire [7:0] spr_pixel_data_in,
     output wire [16:0] spr_sram_addr,
@@ -110,7 +113,7 @@ module sprite_system513 (
     gnd XLXI_64 (.G(XLXN_869));
     gnd XLXI_79 (.G(justsomegrounds));
     gnd XLXI_63 (.G(XLXN_1256));
-    ramb4_s8_s16 sprite_control_reg_ram (.ADDRA(spr_reg_addr_in[8:0]), .ADDRB(sprite_register_sel[7:0]), .CLKA(cpu_wr), .CLKB(clk_in_16mhz), .DIA(cpu_databus[7:0]), .DIB(bus_gnd[15:0]), .ENA(cpu_sprite_reg_sel), .ENB(XLXN_1966), .RSTA(justsomegrounds), .RSTB(justsomegrounds), .WEA(XLXN_666), .WEB(justsomegrounds), .DOA(), .DOB(control_reg_output[15:0]));
+    ramb4_s8_s16 sprite_control_reg_ram (.ADDRA(spr_reg_addr_in[8:0]), .ADDRB(sprite_register_sel[7:0]), .CLKA(clk_fast), .CLKB(clk_in_16mhz), .DIA(cpu_databus[7:0]), .DIB(bus_gnd[15:0]), .ENA((cpu_sprite_reg_sel) & wr_pulse_end), .ENB(XLXN_1966), .RSTA(justsomegrounds), .RSTB(justsomegrounds), .WEA(XLXN_666), .WEB(justsomegrounds), .DOA(), .DOB(control_reg_output[15:0]));
     gnd databus_b_gnd [15:0] (.G(bus_gnd[15:0]));
     vcc XLXI_31 (.P(XLXN_666));
     gnd XLXI_196 (.G(XLXN_1259));
@@ -189,7 +192,7 @@ module sprite_system513 (
     buf_x XLXI_904 (.I(vreg7bits[4]), .O(spr_opt1));
     buf_x XLXI_905 (.I(vreg7bits[5]), .O(spr_opt2));
     gnd XLXI_894 (.G(XLXN_1962));
-    fd8re XLXI_895 (.C(inv_cpu_wr_line), .CE(cpu_sel_spr_ctrl), .D(cpu_databus[7:0]), .R(XLXN_1962), .Q(vreg7bits[7:0]));
+    fd8re XLXI_895 (.C(clk_fast), .CE((cpu_sel_spr_ctrl) & wr_pulse), .D(cpu_databus[7:0]), .R(XLXN_1962), .Q(vreg7bits[7:0]));
     buf_x XLXI_930 (.I(vreg7bits[6]), .O(spr_pri_option));
     inv XLXI_931 (.I(cpu_wr), .O(inv_cpu_wr_line));
     nor4 XLXI_519 (.I0(XLXN_1797), .I1(height_c), .I2(height_b), .I3(height_a), .O(XLXN_1846));

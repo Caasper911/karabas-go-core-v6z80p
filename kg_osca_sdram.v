@@ -90,7 +90,8 @@ module kg_osca_sdram #(
     reg br_q = 1'b0, dma_q = 1'b0;
     always @(posedge clk) begin br_q <= block_refresh; dma_q <= dma_owns; end
     wire hint_ok = !(br_q && !dma_q);
-    wire need_read_q = !((rd_ok && rd_wa == wa_q) || (e0_ok && e0_cwa == wa_q) || (e1_ok && e1_cwa == wa_q));
+    wire hitq_rd = rd_ok && rd_wa == wa_q, hitq_e0 = e0_ok && e0_cwa == wa_q, hitq_e1 = e1_ok && e1_cwa == wa_q, hitq_hint = hitq_e0 || hitq_e1;
+    wire need_read_q = !(hitq_rd || hitq_hint);
     wire [15:0] hint_hit_word = hit_e0 ? e0_word : e1_word;
     wire [17:0] hint_hit_cwa  = hit_e0 ? e0_cwa  : e1_cwa;
     wire [15:0] hit_word = hit_rd ? rd_word : hint_hit_word;
@@ -102,6 +103,12 @@ module kg_osca_sdram #(
     wire want_hint = (!have_t0 || !have_t1) && (v0 || v1);
     wire [17:0] hint_target = !have_t0 ? t0 : t1;
     wire hint_victim = v0 ? 1'b0 : 1'b1;
+    // the read-ahead decision is registered (it is not urgent): it comes from the slot tags through comparators, too long for one tick in front of
+    // the command / sd_a.  It is used only when the controller was idle on the tick before as well (the slots did not change under it).
+    reg        want_hint_q = 1'b0, hint_victim_q = 1'b0, idle_prev = 1'b0;
+    reg [17:0] hint_target_q = 18'd0;
+    always @(posedge clk) begin want_hint_q <= want_hint; hint_target_q <= hint_target; hint_victim_q <= hint_victim; idle_prev <= (state == ST_IDLE); end
+    wire want_hint_r = want_hint_q && idle_prev;
 
     // ---------------- pending write (captured once per low period of the strobe)
     reg        pw = 1'b0, wdone = 1'b0;
@@ -109,6 +116,11 @@ module kg_osca_sdram #(
     reg [7:0]  pw_data = 8'd0;
     wire       act = !cs_n && !wr_n;
     assign wr_pending = pw;
+    // A captured write is visible at once: while it waits (pw = 1) its byte is merged into every cached copy of its word, and a read of that
+    // word completing meanwhile stores the merged word (without this a hit returned the old byte until the write reached the SDRAM, up to ~14 clocks).
+    function [15:0] pw_merge; input [15:0] w; input [17:0] tag;
+        pw_merge = (pw && pw_addr[18:1] == tag) ? (pw_addr[0] ? {pw_data, w[7:0]} : {w[15:8], pw_data}) : w;
+    endfunction
 
     // ---------------- current access
     reg        acc_wr = 1'b0;
@@ -128,7 +140,7 @@ module kg_osca_sdram #(
     // latency does not grow.  Otherwise it follows the cached word of the current address one tick later (a hit; the consumers take the data many ticks later).
     reg  [7:0]  rdata_q = 8'd0;
     wire        rd_done_now = (state == ST_ACC) && (step >= 3'd4) && acc_last && !acc_wr;
-    wire [15:0] next_word = (rd_done_now && acc_wa == wa) ? cap_word : hit_word;
+    wire [15:0] next_word = (rd_done_now && acc_wa == wa) ? pw_merge(cap_word, acc_wa) : hit_word;
     reg         valid_q = 1'b0;
     always @(posedge clk) begin
         rdata_q <= addr[0] ? next_word[15:8] : next_word[7:0];
@@ -149,8 +161,11 @@ module kg_osca_sdram #(
         if (ref_cnt == REF_PERIOD - 1) begin ref_cnt <= 10'd0; if (ref_debt != 4'd8) ref_debt <= ref_debt + 4'd1; end
         else ref_cnt <= ref_cnt + 10'd1;
 
+        // a pending write patches the cached copies of its word (the assignments below that replace a whole word merge it as well)
+        if (pw) begin rd_word <= pw_merge(rd_word, rd_wa); e0_word <= pw_merge(e0_word, e0_cwa); e1_word <= pw_merge(e1_word, e1_cwa); end
         // a request served from the read-ahead word is promoted to the current word (the hint word is overwritten by the next read-ahead)
-        if (hit_hint && !hit_rd) begin rd_word <= hint_hit_word; rd_wa <= hint_hit_cwa; rd_ok <= 1'b1; end
+        // (from the REGISTERED address: the bus address comes through long decoders and the promotion is not urgent - the read data path uses the slots directly)
+        if (hitq_hint && !hitq_rd) begin rd_word <= pw_merge(hitq_e0 ? e0_word : e1_word, hitq_e0 ? e0_cwa : e1_cwa); rd_wa <= hitq_e0 ? e0_cwa : e1_cwa; rd_ok <= 1'b1; end
 
         // write capture
         if (!act) wdone <= 1'b0;
@@ -175,7 +190,7 @@ module kg_osca_sdram #(
         end
 
         ST_IDLE: begin
-            if (pw || need_read_q || (ref_debt != 4'd0) || (want_hint && hint_ok)) begin
+            if (pw || need_read_q || (ref_debt != 4'd0) || (want_hint_r && hint_ok)) begin
                 if (pw) begin                                           // 1) write
                     cmd(CMD_ACTIVE);
                     sd_ba <= pw_addr[11:10];
@@ -195,10 +210,10 @@ module kg_osca_sdram #(
                     acc_wr <= 1'b0; acc_hint <= 1'b0; acc_wa <= wa_q;
                     step <= 3'd1; state <= ST_ACC;
                 end
-                else if (want_hint && hint_ok) begin                    // 4) read ahead (nothing else to do)
+                else if (want_hint_r && hint_ok) begin                  // 4) read ahead (nothing else to do)
                     cmd(CMD_ACTIVE);
-                    sd_ba <= hint_target[10:9]; sd_a <= {6'b000000, hint_target[17:11]};
-                    acc_wr <= 1'b0; acc_hint <= 1'b1; acc_hidx <= hint_victim; acc_wa <= hint_target;
+                    sd_ba <= hint_target_q[10:9]; sd_a <= {6'b000000, hint_target_q[17:11]};
+                    acc_wr <= 1'b0; acc_hint <= 1'b1; acc_hidx <= hint_victim_q; acc_wa <= hint_target_q;
                     step <= 3'd1; state <= ST_ACC;
                 end
             end
@@ -221,10 +236,10 @@ module kg_osca_sdram #(
                     if (acc_wa[17:8] == 10'h030) $display("SDLOG t=%0t %s wa=%05h data=%04h odd=%b  rd_ok=%b rd_wa=%05h e0=%b/%05h e1=%b/%05h  bus addr=%05h addr_q=%05h",
                         $time, acc_wr ? "WRITE" : acc_hint ? "HINT " : "READ ", acc_wa, acc_wr ? {acc_data, acc_data} : cap_word, acc_odd, rd_ok, rd_wa, e0_ok, e0_cwa, e1_ok, e1_cwa, addr, addr_q);
 `endif
-                    if (!acc_wr && !acc_hint) begin rd_word <= cap_word; rd_wa <= acc_wa; rd_ok <= 1'b1; end
+                    if (!acc_wr && !acc_hint) begin rd_word <= pw_merge(cap_word, acc_wa); rd_wa <= acc_wa; rd_ok <= 1'b1; end
                     else if (!acc_wr && acc_hint) begin
-                        if (acc_hidx == 1'b0) begin e0_word <= cap_word; e0_cwa <= acc_wa; e0_ok <= 1'b1; end
-                        else                  begin e1_word <= cap_word; e1_cwa <= acc_wa; e1_ok <= 1'b1; end
+                        if (acc_hidx == 1'b0) begin e0_word <= pw_merge(cap_word, acc_wa); e0_cwa <= acc_wa; e0_ok <= 1'b1; end
+                        else                  begin e1_word <= pw_merge(cap_word, acc_wa); e1_cwa <= acc_wa; e1_ok <= 1'b1; end
                     end
                     else begin                                           // keep all cached words coherent with the write
                         if (rd_ok && rd_wa == acc_wa) begin if (acc_odd) rd_word[15:8] <= acc_data; else rd_word[7:0] <= acc_data; end

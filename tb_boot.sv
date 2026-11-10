@@ -87,6 +87,9 @@ module tb_boot;
                 $display("%0t ms: first opcode fetch in page %02hxxx  (PC=%04h, fetch #%0d)", $time/1000000, pcs[15:8], pcs, fetches);
             end
             last_pc = pcs;
+            if (shot_pc >= 0 && pc_seen_frame < 0 && pcs == shot_pc[15:0]) begin
+                pc_seen_frame = frames; $display("%0t ms: PC reached %04h (+shotpc), frame %0d", $time/1000000, pcs, frames);
+            end
         end
         m1_prev <= dut.m1_n | dut.rd_n_bus | dut.mreq_n_bus;
     end
@@ -119,6 +122,19 @@ module tb_boot;
     // ---------------- "screenshot": one frame of the video output (a..d = 4 bits of each colour, a = MSB)
     reg [11:0] fb [0:1024*700-1];
     reg hs_q = 1, vs_q = 1; integer gx = 0, gy = 0, linelen = 0, frames = 0, f;
+    // +shotpc=XXXX [+shotfr=N] [+shotevery=M]: screenshots of frames N, N+M, ... counted from the frame in which the CPU first fetches
+    // the opcode at XXXX (the same animation frames in the real and the reference build, whatever their speed before that)
+    integer shot_pc = -1, shot_fr = 2, shot_every = 10, pc_seen_frame = -1;
+    // +pallog: every palette write (and every write to $20F) during the frame after each shot, with the scan line
+    integer pal_log_frame = -1;
+    always @(posedge clk_mem) if (pal_log_frame >= 0 && frames == pal_log_frame + 1) begin
+        if (dut.core.pal_en0 | dut.core.pal_en1)
+            $display("PALW f%0d line=%0d %s addr=%03h data=%02h live=%b", frames, dut.core.line_count, dut.core.pal_en0 ? "GB" : "ZR",
+                     dut.core.pal_a1, dut.core.pal_d1, dut.core.colour_select[8]);
+        if (dut.core.wp_pulse && dut.core.XLXI_3640.cpu_sel_palette_ctrl)
+            $display("PCTL f%0d line=%0d data=%02h", frames, dut.core.line_count, dut.core.cpu_databus_in);
+    end
+    initial begin if ($value$plusargs("shotpc=%h", shot_pc)) ; if ($value$plusargs("shotfr=%d", shot_fr)) ; if ($value$plusargs("shotevery=%d", shot_every)) ; end
     wire [11:0] pix = {col_red_a, col_red_b, col_red_c, col_red_d, col_green_a, col_green_b, col_green_c, col_green_d,
                        col_blue_a, col_blue_b, col_blue_c, col_blue_d};
     integer nonblack = 0, shotn = 0, yellow = 0; reg want_shot = 1'b0;
@@ -147,6 +163,22 @@ module tb_boot;
                 want_shot = 1'b0;
             end
             gy = 0;
+            if (pc_seen_frame >= 0 && frames - pc_seen_frame >= shot_fr && (frames - pc_seen_frame - shot_fr) % shot_every == 0) begin
+                want_shot = 1'b1; $display("SHOTFRAME %0d (frame %0d after PC %04h)", shotn, frames - pc_seen_frame, shot_pc[15:0]);
+                if ($test$plusargs("sprdump")) for (sx = 0; sx < 512; sx = sx + 32) begin       // +sprdump: the palettes (both pages) at every shot
+                    $write("PALGB %0d %03h:", shotn, sx);
+                    for (sy = 0; sy < 32; sy = sy + 1) $write(" %02h", dut.core.XLXI_2620.mem[sx + sy]);
+                    $write("\nPALZR %0d %03h:", shotn, sx);
+                    for (sy = 0; sy < 32; sy = sy + 1) $write(" %02h", dut.core.XLXI_2621.mem[sx + sy]);
+                    $write("\n");
+                end
+                if ($test$plusargs("pallog")) pal_log_frame = frames;
+                if ($test$plusargs("sprdump")) for (sx = 0; sx < 512; sx = sx + 32) begin       // +sprdump: the sprite register RAM at every shot
+                    $write("SPRREG %0d %03h:", shotn, sx);
+                    for (sy = 0; sy < 32; sy = sy + 1) $write(" %02h", dut.core.XLXI_2849.sprite_control_reg_ram.mem[sx + sy]);
+                    $write("\n");
+                end
+            end
         end
     end
 
@@ -509,11 +541,14 @@ module tb_boot;
 
     // ---------------- DMACHK / DMALAT / WAITCNT: system RAM on the SDRAM seen from the core
     integer dc_chk = 0, dc_err = 0, dl_n = 0, dl_max = 0, dl_over = 0, w_cpu = 0, w_cyc = 0;
-    reg [15:0] dc_prev = 16'hFFFF; reg [7:0] dc_exp; reg [8:0] dc_i;
+    reg [18:0] dc_prev = 19'h7FFFF; reg [7:0] dc_exp; reg [8:0] dc_i;
+    // +dmalo=HEX +dmahi=HEX: window of the full system RAM address with the expected sample pattern (default $06000..$061FF)
+    reg [18:0] dc_lo = 19'h06000, dc_hi = 19'h06200;
+    initial begin if ($value$plusargs("dmalo=%h", dc_lo)) ; if ($value$plusargs("dmahi=%h", dc_hi)) ; end
     always @(posedge clk16) begin
-        if (!dut.busak_n && !dut.rd_n_bus && !dut.system_ram_cs && ms >= 12 && dut.a_bus >= 16'h6000 && dut.a_bus < 16'h6200) begin
-            if (dut.a_bus == dc_prev) begin                       // second cycle of the two-cycle DMA read: the data are taken now
-                dc_i = dut.a_bus[8:0];
+        if (!dut.busak_n && !dut.rd_n_bus && !dut.system_ram_cs && ms >= 12 && dut.sys_addr_m >= dc_lo && dut.sys_addr_m < dc_hi) begin
+            if (dut.sys_addr_m == dc_prev) begin                  // second cycle of the two-cycle DMA read: the data are taken now
+                dc_i = dut.sys_addr_m[8:0];
                 dc_exp = dc_i[8] ? (dc_i[7:0] ^ 8'h5A) : (({dc_i[7:0], 2'b00} + dc_i[7:0]) & 8'hFF);
                 dc_chk = dc_chk + 1;
                 `ifndef KG_SYSRAM_MODEL
@@ -522,15 +557,15 @@ if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $displa
                 if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch t=%0t addr=%04h got=%02h exp=%02h", $time, dut.a_bus, dut.sys_rdata, dc_exp); end
 `endif
             end
-            dc_prev <= dut.a_bus;
-        end else dc_prev <= 16'hFFFF;
+            dc_prev <= dut.sys_addr_m;
+        end else dc_prev <= 19'h7FFFF;
         if (ms >= 12) begin w_cyc = w_cyc + 1; if (!dut.sdram_wait_n) w_cpu = w_cpu + 1; end
     end
     // latency from a system RAM address change (FPGA owns the bus) to rd_valid, in clk_mem ticks
     reg [18:0] dl_a = 0; integer dl_t = 0; reg dl_run = 0; reg [6:0] dl_st = 0; reg [17:0] dl_wa = 0; reg dl_pw = 0, dl_rd = 0; time dl_tt = 0; integer dl_pr = 0; integer dl_h [0:15]; integer dl_i; initial for (dl_i = 0; dl_i < 16; dl_i = dl_i + 1) dl_h[dl_i] = 0;
     always @(posedge clk_mem) if (ms >= 12) begin
         dl_a <= dut.sys_addr_m;
-        if (!dut.busak_n && dut.sys_addr_m != dl_a && dut.sys_addr_m >= 19'h06000 && dut.sys_addr_m < 19'h06200) begin dl_run <= 1'b1; dl_t <= 1;
+        if (!dut.busak_n && dut.sys_addr_m != dl_a && dut.sys_addr_m >= dc_lo && dut.sys_addr_m < dc_hi) begin dl_run <= 1'b1; dl_t <= 1;
 `ifndef KG_SYSRAM_MODEL
             dl_st <= {dut.sdram.state, dut.sdram.step, dut.sdram.acc_wr, dut.sdram.acc_hint}; dl_wa <= dut.sdram.acc_wa; dl_pw <= dut.sdram.pw; dl_rd <= dut.sdram.need_read_q;
 `endif
@@ -544,7 +579,7 @@ if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $displa
         $display("DMACHK: %0d DMA reads checked against the expected sample, %0d wrong", dc_chk, dc_err);
         $display("DMALAT: %0d DMA address changes, max latency to rd_valid = %0d ticks, above 11 ticks: %0d", dl_n, dl_max, dl_over);
         $display("DMALATH ticks 0..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", dl_h[0], dl_h[1], dl_h[2], dl_h[3], dl_h[4], dl_h[5], dl_h[6], dl_h[7], dl_h[8], dl_h[9], dl_h[10], dl_h[11], dl_h[12], dl_h[13], dl_h[14], dl_h[15]);
-        $display("WAITCNT: CPU WAIT inserted in %0d of %0d clk16 cycles (%0d ppm)", w_cpu, w_cyc, (w_cpu * 1000000) / (w_cyc + 1));
+        $display("WAITCNT: CPU WAIT inserted in %0d of %0d clk16 cycles (%0d ppm)", w_cpu, w_cyc, (64'(w_cpu) * 64'd1000000) / 64'(w_cyc + 1));
     end endtask
 
 
@@ -607,7 +642,29 @@ if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $displa
         end
     end
 
+    // ---------------- sprite register writes: the RAM is written at wp_end (after the strobe) with the address / data of that moment.
+    // SPRWR: compare with the address / data at the start of the write (wp_pulse); report changed values and writes whose select is gone.
+    reg [8:0] spw_a = 0; reg [7:0] spw_d = 0; reg spw_v = 1'b0; integer spw_n = 0, spw_bad = 0;
+    always @(posedge clk_mem) begin
+        if (dut.core.wp_pulse) begin
+            spw_v <= dut.core.XLXN_8010; spw_a <= dut.core.cpu_address_bus[8:0]; spw_d <= dut.core.cpu_databus_in;
+        end
+        if (dut.core.wp_end && (spw_v || dut.core.XLXN_8010)) begin
+            spw_n = spw_n + 1;
+            if (!spw_v || !dut.core.XLXN_8010 || spw_a != dut.core.cpu_address_bus[8:0] || spw_d != dut.core.cpu_databus_in) begin
+                spw_bad = spw_bad + 1;
+                if (spw_bad <= 20) $display("SPRWR %0d ms: start sel=%b a=%03h d=%02h | at the RAM write sel=%b a=%03h d=%02h  PC~%04h", ms, spw_v, spw_a, spw_d,
+                    dut.core.XLXN_8010, dut.core.cpu_address_bus[8:0], dut.core.cpu_databus_in, last_pc);
+            end
+            spw_v <= 1'b0;
+        end
+    end
+    final $display("SPRWR: %0d sprite register writes, %0d with a changed address / data / select at the RAM write", spw_n, spw_bad);
+
     // ---------------- progress / end
+    // +shotfrom=N [+shotstep=M]: screenshots at N, N+M, ... ms instead of 290 and 950 (M default 100)
+    integer shot_from = 0, shot_step = 100;
+    initial begin if ($value$plusargs("shotfrom=%d", shot_from)) ; if ($value$plusargs("shotstep=%d", shot_step)) ; end
     always #1000000 begin
         ms = ms + 1;
         if (ms == 1601) dump_hist();
@@ -624,7 +681,7 @@ if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $displa
         if (ms == 600 || ms == 950 || ms == 1100) plane_report();
         if (ms == 700 || ms == 950) dump_stack();
         if (ms == 950) begin dump_vram_map(); hexdump('h18000,48); hexdump('h19000,48); hexdump('h19f00,48); hexdump('h1c000,80); hexdump('h1e400,64); hexdump('h1e800,64); hexdump('h1ec00,64); end
-        if (ms == 290 || ms == 950) want_shot = 1'b1;
+        if (shot_from == 0 ? (ms == 290 || ms == 950) : (ms >= shot_from && (ms - shot_from) % shot_step == 0)) want_shot = 1'b1;
         if (ms % 100 == 0) $display("    video: vrt_line edges=%0d scanline_tc=%0d vsync edges=%0d hsync edges=%0d line_count=%0d", vrt_edges, sl_tc, vs_edges, hs_edges, dut.core.line_count);
         if (ms % 100 == 0) $display("... %0d ms simulated, PC=%04h, reset=%b, fetches=%0d", ms, last_pc, sys_reset, fetches);
         if (ms >= sim_ms_eff) begin

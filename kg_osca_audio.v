@@ -15,8 +15,10 @@ module kg_osca_audio #(parameter WINDOW = 333) (
     always @(posedge clk) begin
         if (cnt == WINDOW - 1) begin
             cnt   <= 9'd0;
-            left  <= {~tl[15], tl[14:0]};            // unsigned 0..65268 -> signed (minus 32768)
-            right <= {~tr[15], tr[14:0]};
+            // unsigned 0..65268 -> signed (minus 32768), halved (-6 dB): the full swing of OSCA's four channels at full scale of the DAC
+            // (2.1 V rms) overdrove the board's analogue output with loud MOD files
+            left  <= {~tl[15], ~tl[15], tl[14:1]};
+            right <= {~tr[15], ~tr[15], tr[14:1]};
             acc_l <= 9'd0; acc_r <= 9'd0;
         end else begin
             cnt   <= cnt + 9'd1;
