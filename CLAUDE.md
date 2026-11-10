@@ -6,7 +6,7 @@
 Портировать ядро OSCA (github.com/minexew/v6z80p, `OSCA/v6z80p_plus_v1.1`, проект `osca676p`, исходники в виде схем ISE) на плату
 **Karabas Go** (Spartan-6 `xc6slx25-ftg256-2`, SDRAM MT48LC16M16A2 по тестам NanoMig, SRAM, MCU для SD/PS2).
 **Статус (2026-11-10):** сборка ISE с T80pa (`ise/osca676p_t80pa.xst`, ветка `board/t80pa-pll`) на плате работает с FLOS 6.14 (образ по умолчанию),
-клавиатура, тестовые образы, тест прерываний и демо parity (копроцессор ждёт SDRAM после переходов); все ограничения тайминга выполнены.
+клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов) и звук MOD; все ограничения тайминга выполнены.
 Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 

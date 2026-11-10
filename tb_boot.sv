@@ -21,6 +21,8 @@ module tb_boot;
     // ---------------- MCU ROM loader emulation: writes the RAM image (file offset = Z80 address) while the core is in reset
     parameter IMG_BYTES = 20142;
     reg [7:0] img [0:IMG_BYTES-1];
+    // shadow of the system RAM (the loaded image + CPU writes): +dmaimg checks every byte the FPGA's DMA takes against it
+    reg [7:0] shadow [0:524287];  integer shi;  initial for (shi = 0; shi < 524288; shi = shi + 1) shadow[shi] = 8'h00;
     // +simms=N ends the run after N ms of simulated time (default: the SIM_MS parameter)
     real sim_ms_eff; integer simms_i;
     initial begin sim_ms_eff = SIM_MS; if ($value$plusargs("simms=%d", simms_i)) sim_ms_eff = simms_i; end
@@ -31,7 +33,7 @@ module tb_boot;
         wait (sd_init);
         repeat (50) @(posedge clk_mem);
         for (li = 0; li < IMG_BYTES; li = li + 1) begin
-            @(posedge clk_mem); ld_addr <= li; ld_data <= img[li]; ld_wr <= 1'b1;
+            @(posedge clk_mem); ld_addr <= li; ld_data <= img[li]; ld_wr <= 1'b1; shadow[li] = img[li];
             @(posedge clk_mem); ld_wr <= 1'b0;
             repeat (14) @(posedge clk_mem);
         end
@@ -544,12 +546,14 @@ module tb_boot;
     reg [18:0] dc_prev = 19'h7FFFF; reg [7:0] dc_exp; reg [8:0] dc_i;
     // +dmalo=HEX +dmahi=HEX: window of the full system RAM address with the expected sample pattern (default $06000..$061FF)
     reg [18:0] dc_lo = 19'h06000, dc_hi = 19'h06200;
-    initial begin if ($value$plusargs("dmalo=%h", dc_lo)) ; if ($value$plusargs("dmahi=%h", dc_hi)) ; end
+    reg dc_img = 1'b0;
+    initial begin if ($value$plusargs("dmalo=%h", dc_lo)) ; if ($value$plusargs("dmahi=%h", dc_hi)) ; if ($test$plusargs("dmaimg")) dc_img = 1'b1; end
+    always @(posedge clk16) if (!ld_active && dut.busak_n && !dut.system_ram_cs && !dut.wr_n_bus) shadow[dut.sys_addr_m] <= dut.d_bus;   // CPU writes
     always @(posedge clk16) begin
         if (!dut.busak_n && !dut.rd_n_bus && !dut.system_ram_cs && ms >= 12 && dut.sys_addr_m >= dc_lo && dut.sys_addr_m < dc_hi) begin
             if (dut.sys_addr_m == dc_prev) begin                  // second cycle of the two-cycle DMA read: the data are taken now
                 dc_i = dut.sys_addr_m[8:0];
-                dc_exp = dc_i[8] ? (dc_i[7:0] ^ 8'h5A) : (({dc_i[7:0], 2'b00} + dc_i[7:0]) & 8'hFF);
+                dc_exp = dc_img ? shadow[dut.sys_addr_m] : dc_i[8] ? (dc_i[7:0] ^ 8'h5A) : (({dc_i[7:0], 2'b00} + dc_i[7:0]) & 8'hFF);
                 dc_chk = dc_chk + 1;
                 `ifndef KG_SYSRAM_MODEL
 if (dut.sys_rdata !== dc_exp) begin dc_err = dc_err + 1; if (dc_err < 6) $display("DMACHK mismatch t=%0t addr=%04h got=%02h exp=%02h  sdram rd_ok=%b rd_wa=%05h rd_word=%04h e0=%b/%05h/%04h e1=%b/%05h/%04h rd_valid=%b", $time, dut.a_bus, dut.sys_rdata, dc_exp, dut.sdram.rd_ok, dut.sdram.rd_wa, dut.sdram.rd_word, dut.sdram.e0_ok, dut.sdram.e0_cwa, dut.sdram.e0_word, dut.sdram.e1_ok, dut.sdram.e1_cwa, dut.sdram.e1_word, dut.sdram.rd_valid); end

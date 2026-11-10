@@ -28,7 +28,9 @@ module amiga_scaler(sample, volume, result);
    
 always@(sample or volume)
  begin
-    QOUT <= sample * volume;
+    // Karabas Go port: was "sample * volume" - with the unsigned volume the whole product is unsigned (Verilog), a negative sample was taken
+    // as 128..255 and the result came out 4*volume too high (mod 256): every negative half-wave was wrong below volume 64 (at 32 its sign flipped).
+    QOUT <= sample * $signed({1'b0, volume});
  end
 
 assign result[0] = QOUT [6];

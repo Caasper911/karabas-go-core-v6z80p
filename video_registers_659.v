@@ -17,6 +17,7 @@ module video_registers_659 (
     output wire dualpfen_out,
     output wire [3:0] xstopcoarse_out,
     output wire pfabufbmbufsel_out,
+    output wire pfabufbmbufsel_next,  // Karabas Go port: the value XLXI_921 takes on the next clk16 edge (bitmapcore reads its base registers ahead)
     output wire live_palette,
     input wire cpu_wr_line,
     output wire [3:0] xhws_out,
@@ -111,6 +112,7 @@ module video_registers_659 (
     fd4re XLXI_873 (.C(main_clock_in), .CE(new_scanline_in), .D0(vidreg_b[0]), .D1(vidreg_b[1]), .D2(vidreg_b[2]), .D3(vidreg_b[3]), .R(XLXN_2570), .Q0(xstopcoarse_out[0]), .Q1(xstopcoarse_out[1]), .Q2(xstopcoarse_out[2]), .Q3(xstopcoarse_out[3]));
     gnd XLXI_877 (.G(XLXN_2570));
     fde XLXI_921 (.C(main_clock_in), .CE(new_scanline_in), .D(vreg_vidctrl[5]), .Q(pfabufbmbufsel_out));
+    assign pfabufbmbufsel_next = new_scanline_in ? vreg_vidctrl[5] : pfabufbmbufsel_out;
     fde XLXI_927 (.C(main_clock_in), .CE(new_scanline_in), .D(live_palette_unsyncd), .Q(live_palette));
     fd8re XLXI_146 (.C(clk_fast), .CE((cpu_sel_xhws) & wr_pulse), .D(cpu_databus[7:0]), .R(XLXN_2650), .Q(bothpfxhws[7:0]));
     inv XLXI_750 (.I(cpu_wr_line), .O(inv_cpu_wr_line));

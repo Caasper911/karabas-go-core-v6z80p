@@ -8,6 +8,7 @@ module bitmapcore_603 (
     input wire [7:0] cpu_addr,
     input wire cpu_write,
     input wire regs_ab_select,
+    input wire regs_ab_select_next,   // Karabas Go port: regs_ab_select after the next clk16 edge
     input wire vreg_range,
     input wire stop_slb_writes,
     input wire start_linegen_in,
@@ -28,6 +29,15 @@ module bitmapcore_603 (
     wire bitmapend;
     wire [17:0] bitmapoffset;
     wire [18:0] bitplane_base;
+    // Karabas Go port: the bitplane base RAMs are read with the plane select / register set of the NEXT clk16 cycle and the result is registered
+    // on the clk16 edge.  The display fetch address (base + offset) is taken one tick after that edge by the memory wrapper; with the RAMs read
+    // asynchronously behind the edge the path did not fit in that tick.  Same values: the RAMs are written (wr_pulse) at tick 1 or later,
+    // so the read at the edge sees what the asynchronous read saw at tick 1.
+    wire [18:0] bp_base_rd;
+    reg  [18:0] bp_base_q = 19'd0;
+    wire [2:0]  bp_next;               // the plane select after the next edge (XLXI_786: R ? 0 : CE ? q+1 : q)
+    always @(posedge clk16mhz_in) bp_base_q <= bp_base_rd;
+    assign bitplane_base = bp_base_q;
     wire [18:0] bm_addition;
     wire bm_srcaddr_inc_en;
     wire bmstartreq_in;
@@ -129,8 +139,9 @@ module bitmapcore_603 (
     and2 XLXI_711 (.I0(regwren), .I1(XLXN_48), .O(XLXN_45));
     nor2 XLXI_712 (.I0(cpu_addr[1]), .I1(cpu_addr[0]), .O(XLXN_48));
     inv XLXI_715 (.I(cpu_write), .O(inv_cpu_wr));
-    ram16x8d XLXI_717 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .WCLK(clk_fast), .WE((XLXN_42) & wr_pulse), .DPO(bitplane_base[15:8]), .SPO());
-    ram16x8d XLXI_718 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .WCLK(clk_fast), .WE((XLXN_45) & wr_pulse), .DPO(bitplane_base[7:0]), .SPO());
+    assign bp_next = XLXN_2255 ? 3'd0 : bitmapbusy ? {bp_select_c, bp_select_b, bp_select_a} + 3'd1 : {bp_select_c, bp_select_b, bp_select_a};
+    ram16x8d XLXI_717 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_next[0]), .DPRA1(bp_next[1]), .DPRA2(bp_next[2]), .DPRA3(regs_ab_select_next), .WCLK(clk_fast), .WE((XLXN_42) & wr_pulse), .DPO(bp_base_rd[15:8]), .SPO());
+    ram16x8d XLXI_718 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[7:0]), .DPRA0(bp_next[0]), .DPRA1(bp_next[1]), .DPRA2(bp_next[2]), .DPRA3(regs_ab_select_next), .WCLK(clk_fast), .WE((XLXN_45) & wr_pulse), .DPO(bp_base_rd[7:0]), .SPO());
     and3b1 XLXI_734 (.I0(cpu_addr[1]), .I1(regwren), .I2(cpu_addr[0]), .O(XLXN_42));
     and3b1 XLXI_735 (.I0(cpu_addr[0]), .I1(regwren), .I2(cpu_addr[1]), .O(XLXN_41));
     and3b2 XLXI_749 (.I0(vreg_range), .I1(cpu_addr[7]), .I2(cpu_addr[6]), .O(regwren));
@@ -160,7 +171,7 @@ module bitmapcore_603 (
     m2_1 XLXI_851 (.D0(planar_lbaddrinc_en), .D1(bitmaplbwren_out), .S0(chunky_mode), .O(bm_lbaddrinc_en));
     fd XLXI_856 (.C(clk16mhz_in), .D(bitmapbusy), .Q(XLXN_2385));
     and2b1 XLXI_857 (.I0(bitmapbusy), .I1(XLXN_2385), .O(bitmap_linedone_out));
-    ram16x3d XLXI_858 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[2:0]), .DPO(bitplane_base[18:16]), .DPRA0(bp_select_a), .DPRA1(bp_select_b), .DPRA2(bp_select_c), .DPRA3(regs_ab_select), .SPO(), .WCLK(clk_fast), .WE((XLXN_41) & wr_pulse));
+    ram16x3d XLXI_858 (.A0(cpu_addr[2]), .A1(cpu_addr[3]), .A2(cpu_addr[4]), .A3(cpu_addr[5]), .D(cpu_databus[2:0]), .DPO(bp_base_rd[18:16]), .DPRA0(bp_next[0]), .DPRA1(bp_next[1]), .DPRA2(bp_next[2]), .DPRA3(regs_ab_select_next), .SPO(), .WCLK(clk_fast), .WE((XLXN_41) & wr_pulse));
     and2 XLXI_867 (.I0(new_scanline_in), .I1(XLXN_2524), .O(XLXN_2521));
     or3 XLXI_889 (.I0(mod_inc_offset), .I1(XLXN_2461), .I2(XLXN_2459), .O(bm_srcaddr_inc_en));
     fdrs XLXI_903 (.C(clk16mhz_in), .D(XLXN_2524), .R(new_scanline_in), .S(XLXN_2518), .Q(XLXN_2524));
