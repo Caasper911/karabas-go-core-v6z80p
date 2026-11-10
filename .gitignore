@@ -2,10 +2,10 @@
 __pycache__/
 az80/
 build/
-ise/*.lso
-ise/*.ngc
-ise/*.ngr
-ise/*_xst.xrpt
-ise/_xmsgs/
-ise/work/
+src/ise/*.lso
+src/ise/*.ngc
+src/ise/*.ngr
+src/ise/*_xst.xrpt
+src/ise/_xmsgs/
+src/ise/work/
 modules/

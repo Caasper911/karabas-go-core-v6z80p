@@ -7,7 +7,7 @@
 **Karabas Go** (Spartan-6 `xc6slx25-ftg256-2`, SDRAM MT48LC16M16A2 по тестам NanoMig, SRAM, MCU для SD/PS2).
 **Статус (2026-11-10):** сборка ISE с T80pa (`ise/osca676p_t80pa.xst`, ветка `board/t80pa-pll`) на плате работает с FLOS 6.14 (образ по умолчанию),
 клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов) и звук MOD; все ограничения тайминга выполнены.
-Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
+Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `sim/scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 
 ## Ветки
@@ -16,6 +16,13 @@
 - `wip/sdram-iob-timing` — правки для физического тайминга SDRAM (инвертированный `SDR_CLK`, регистры в IOB, захват данных в IOB-регистр,
   модель SDRAM с реальными задержками). **В ней известная регрессия**: звуковой DMA с копроцессором даёт несколько неверных чтений
   (см. `docs/OPEN_TASKS.md`). В `master` не вливать, пока `make regress` не пройдёт на этой ветке целиком.
+
+## Структура
+В корне только `modules/` (клон karabas-go-modules, в .gitignore), `src/`, `CLAUDE.md` и `README.md`. В `src/`: `rtl/` (верхний модуль `karabas_go_osca_top.v` в корне, остальное по папкам: `soc/` (ядро OSCA `osca_core.v`, `kg_osca_soc.v`), `cpu/` (`kg_osca_cpu.v`, `t80pa/`, `t80/`), `memory/`, `video/`, `sound/`, `io/`, `debug/`, `prims/`; имена RTL-файлов в тексте без пути — из этого дерева), `ise/`,
+`docs/`, `scripts/make_kg1.py`, генераторы Verilog из схем, тестовые программы Z80 `tests/` (`video/`, `linecop/`, `sound/`, `system/`; из них собираются образы и для симуляции, и для `.kg1`), `roms/` (`.bin` для платы и генерации, `rom_tail.asm` — исходник подменённого boot ROM).
+Всё для симуляции — в `src/sim/`: тестбенчи `tb_*`, модели (`kg_sysram_model.v`, `kg_tv80pa.v`, `kg_az80.v`, `tv80/`, `alt/`), эталон (`ref_overrides/`,
+`golden/`), образы `roms/*.hex` (`lc_images/`, `modes/`), скрипты `scripts/` (`sim.sh`, `regress.py`, генераторы образов parity и MOD), сборки `build/`.
+Все пути ниже — относительно `src/`; команды `make` запускать из `src/`.
 
 ## Как запускать (нужны: verilator ≥ 5 с `--binary --timing`, iverilog, yosys, python3 + numpy + pillow, pasmo; для ISE — ISE 14.7)
 ```
@@ -27,32 +34,33 @@ make ref             # эталонная сборка (идеальные па�
 make ise             # ise/Makefile (НЕ запускался; см. ise/ и docs/OPEN_TASKS.md)
 ```
 На Windows симуляцию запускать из PowerShell через MSYS2: `$env:MSYSTEM='UCRT64'; $env:CHERE_INVOKING='1'; & C:\msys64\usr\bin\bash.exe -l script.sh`
-(в Git Bash Verilator не находит Perl-модули, а g++ пишет временные файлы в `C:\Windows`). Сборка ISE: `cmd /c "C:\hobby\karabas_go_v6z80p\ise\run_all.bat osca676p_t80pa.xst"`
-(полный путь; map иногда молча обрывается на «Global Placement» — повторить). Модель шины T80pa в симуляции (`kg_tv80pa.v`, сверена с GHDL):
-`KG_EXTRA_DEFS="-DKG_CPU_T80PA -DKG_CPU_TV80PA" BUILD=build/pa scripts/sim.sh build real`. Verilog из `ghdl --synth` для T80 как модель НЕ годится.
-`scripts/sim.sh run <real|ref> <image.hex> <outdir> [ms]` запускает один образ; в `<outdir>` лягут `run.log` и `frame_N.ppm`.
-Тестбенч `tb_boot.sv` печатает проверки: `SDRAM model: ... violations`, `DMACHK` (байты, которые DMA звука получает из RAM, против ожидаемых),
+(в Git Bash Verilator не находит Perl-модули, а g++ пишет временные файлы в `C:\Windows`). Сборка ISE: `cmd /c "C:\hobby\karabas_go_v6z80p\src\ise\run_all.bat osca676p_t80pa.xst"`
+(полный путь; map иногда молча обрывается на «Global Placement» — повторить). Модель шины T80pa в симуляции (`sim/kg_tv80pa.v`, сверена с GHDL):
+`KG_EXTRA_DEFS="-DKG_CPU_T80PA -DKG_CPU_TV80PA" BUILD=sim/build/pa sim/scripts/sim.sh build real`. Verilog из `ghdl --synth` для T80 как модель НЕ годится.
+`sim/scripts/sim.sh run <real|ref> <image.hex> <outdir> [ms]` запускает один образ; в `<outdir>` лягут `run.log` и `frame_N.ppm`.
+Тестбенч `sim/tb_boot.sv` печатает проверки: `SDRAM model: ... violations`, `DMACHK` (байты, которые DMA звука получает из RAM, против ожидаемых),
 `LCCHK` (байты списка копроцессора), `DMALAT`/`WAITCNT` (задержки и доля тактов с WAIT). Кадры пишутся на 290 и 950 мс (`frame_0`, `frame_1`).
 Одноядерная машина считала ~100 мс симуляции в минуту с моделью SDRAM с задержками; на вашей машине это должно быть быстрее.
 
 ## Устройство (кратко; подробности — README.md)
 - Тактирование: `clk96` = DCM_CLKGEN 50 МГц·48/25 = 6·16 МГц; `clk16` делает счётчик в `kg_osca_mem.v`.
-- Soft Z80: T80s (VHDL, `t80/`) на плате, tv80 (Verilog, `tv80/`) только для симуляции (`-DKG_CPU_TV80`). `kg_osca_cpu.v`: арбитр шины
+- Soft Z80: T80s (VHDL, `t80/`) на плате, tv80 (Verilog, `sim/tv80/`) только для симуляции (`-DKG_CPU_TV80`). `kg_osca_cpu.v`: арбитр шины
   (CPU/DMA ядра), выходы процессора проходят через регистры по спаду (настоящий Z80 меняет выходы после фронта, OSCA на это опирается).
 - Видео-RAM и спрайт-RAM на одной SRAM через `kg_osca_mem.v` (v2): три доступа за такт 16 МГц (A tick1 чтение экрана, B tick3 спрайты,
   C tick5 запись/чтение второй фазы). Правки ядра (`patch_osca_top.py`): шина `vram_rdata2`, блиттер защёлкивает данные на спаде с
   регистровым CE, CPU читает видео через `vram_rdata2`, запись линейного буфера спрайтов задержана на такт (14 триггеров в `sprite_system513.v`).
 - Системная RAM (512 КБ) на SDRAM: `kg_osca_sdram.v` (чтение спекулятивно по смене адреса слова, запись захватывается по стробу, регенерация
   не выполняется пока FPGA просит шину/владеет ею, два слота упреждающего чтения по `linecop_pc_o` для копроцессора, `WAIT_n` для CPU в `kg_osca_soc.v`).
-- Загрузка без PIC/EEPROM: подменённый boot ROM (`rom_tail.asm` → `boot_rom_mcu.bin`), FLOS 5.68 кладёт в RAM по `$1000` MCU-загрузчик, пока ядро в сбросе; MCU держится в сбросе до `sd_init`.
-- Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA. Не сделаны: протокол джойстиков, PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`alt/kg_osca_eeprom.v` не симулировался).
-- Генерация Verilog из схем: `sch2v.py`, `gen_prims.py`, `patch_osca_top.py`, `trace_consumers.py` (нужен клон minexew/v6z80p, каталог схем
-  `OSCA/v6z80p_plus_v1.1/osca676p`; проверенный вызов: `python3 sch2v.py <каталог osca676p> <outdir> osca_pal`, затем `patch_osca_top.py osca_pal.v osca_core.v`,
-  boot ROM подставляется переменной `OSCA_ROM_BIN=boot_rom_mcu.bin`). Сгенерированные файлы лежат в репозитории, обычно регенерировать не нужно.
+- Загрузка без PIC/EEPROM: подменённый boot ROM (`roms/rom_tail.asm` → `roms/boot_rom_mcu.bin`), FLOS 5.68 кладёт в RAM по `$1000` MCU-загрузчик, пока ядро в сбросе; MCU держится в сбросе до `sd_init`.
+- Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA. Не сделаны: протокол джойстиков, PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`sim/alt/kg_osca_eeprom.v` не симулировался).
+- Генерация Verilog из схем (`scripts/sch2v/`): `sch2v.py`, `gen_prims.py`, `patch_osca_top.py`, `trace_consumers.py` (нужен клон minexew/v6z80p, каталог схем
+  `OSCA/v6z80p_plus_v1.1/osca676p`; проверенный вызов: `python3 scripts/sch2v/sch2v.py <каталог osca676p> <outdir> osca_pal`, затем `scripts/sch2v/patch_osca_top.py osca_pal.v osca_core.v`;
+  `gen_prims.py [out.v]` пишет `kg_prims.v` (в `rtl/prims/kg_prims.v` есть ручные правки — сравнивать перед заменой),
+  boot ROM подставляется переменной `OSCA_ROM_BIN=roms/boot_rom_mcu.bin`). Сгенерированные файлы лежат в репозитории, обычно регенерировать не нужно.
 
 ## Что проверено (симуляция) и как
 Последний прогон `make regress` на `master`: 11 из 11 тестов пройдено (flos, sprites, audio, lc_audio, lc_only, chunky_blit, planar4, tiles16, linedraw, sprites2, cpu_vram).
-Эталон = то же ядро с идеальными асинхронными памятями (`ref_overrides/`, `make ref`); кадры эталона — `golden/*.png`.
+Эталон = то же ядро с идеальными асинхронными памятями (`sim/ref_overrides/`, `make ref`); кадры эталона — `sim/golden/*.png`.
 - FLOS (баннер на 950 мс), спрайты (48 штук), копроцессор (список из 417 слов, 50 цветовых полос), 5 режимов (chunky+блиттер, планарный
   4 плоскости, тайлы 16×16, линейный рисовальщик, спрайты с отражением/высотами/движением), чтение VRAM процессором: кадры побитово совпадают.
 - Звуковой DMA: ~18 тыс. чтений без ошибок; чтения списка копроцессора: 1626 без ошибок; CPU получает WAIT менее чем в 0,1% тактов.
@@ -73,9 +81,9 @@ make ise             # ise/Makefile (НЕ запускался; см. ise/ и do
    пути: решения принимать в фиксированные такты, где вход заведомо стабилен.
 9. Меняя задержку для потребителя без WAIT (звуковой DMA берёт данные через 12 тактов), смотреть гистограмму задержек (`DMALATH`), а не только максимум.
 10. Синтетические тесты DMA проверяли только последовательные чтения (их скрывает упреждающее чтение); parity ломался на переходах списка.
-   Если программа на плате ведёт себя не так — запускать в симуляции её саму (`scripts/make_parity_image.py` как образец), а не похожий тест.
+   Если программа на плате ведёт себя не так — запускать в симуляции её саму (`sim/scripts/make_parity_image.py` как образец), а не похожий тест.
 
 ## Справочные репозитории (клонировать рядом)
-- `modules/` внутри репозитория: https://github.com/andykarpov/karabas-go-modules (нужны 9 файлов, перечислены в `ise/osca676p.prj`; `modules/` в .gitignore)
+- `modules/` в корне репозитория (рядом с `src/`): https://github.com/andykarpov/karabas-go-modules (нужны 9 файлов, перечислены в `src/ise/osca676p.prj` как `../../modules/...`; `modules/` в .gitignore)
 - https://github.com/minexew/v6z80p (примеры `FLOS_based_programs/Simple_examples`, `tests/Misc`, `Bootcode`, `OSCA/ROM`; FLOS568F.OSF в `Contributions/Hans/CPM/v6z80pcpm30/`)
 - https://github.com/andykarpov/karabas-go-core-nanomig (`fastram_sdram.v` — основа контроллера), `-core-next`, `-core-profi`: пины платы, Makefile и xst для ISE.
