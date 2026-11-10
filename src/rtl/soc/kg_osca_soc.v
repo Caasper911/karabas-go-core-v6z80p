@@ -36,6 +36,7 @@ module kg_osca_soc (
     output wire col_green_a, col_green_b, col_green_c, col_green_d,
     output wire col_blue_a, col_blue_b, col_blue_c, col_blue_d,
     output wire horizontal_sync, tv_sync,
+    output wire rgb_oe,                    // the display area of the core (clk16); its colours are cleared outside it a clk16 later
     // audio
     output wire audio_left, audio_right,
     output wire [9:0] audio_pcm_l, audio_pcm_r,   // the mixer sums (PCM, 512 = silence): straight to the DAC
@@ -119,7 +120,7 @@ module kg_osca_soc (
         .spr_wdata(spr_wdata), .spr_wdata_oe(spr_wdata_oe), .spr_rdata(spr_rdata),
         .spr_ram_wr(spr_ram_wr), .spr_ram_rd(spr_ram_rd), .spr_addrbus(spr_addrbus),
         .vram_rd(vram_rd), .vram_wr(vram_wr),
-        .tv_sync(tv_sync), .horizontal_sync(horizontal_sync),
+        .tv_sync(tv_sync), .horizontal_sync(horizontal_sync), .rgb_oe_o(rgb_oe),
         .col_red_a(col_red_a), .col_red_b(col_red_b), .col_red_c(col_red_c), .col_red_d(col_red_d),
         .col_green_a(col_green_a), .col_green_b(col_green_b), .col_green_c(col_green_c), .col_green_d(col_green_d),
         .col_blue_a(col_blue_a), .col_blue_b(col_blue_b), .col_blue_c(col_blue_c), .col_blue_d(col_blue_d),

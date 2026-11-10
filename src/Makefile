@@ -1,11 +1,11 @@
-# Command line build of the OSCA (V6Z80P+) core for Karabas Go with ISE 14.7, the way the cores of Andy Karpov are built
-# (karabas-go-core-tsconf/src/Makefile): sources -> karabas_go.bin -> v6z80p.kg (make_core.py of karabas-go-tools).
-# Only the Go board: the core is not ported to Mini / Mini G yet.
+# Command line build of the OSCA (V6Z80P+) core for Karabas Go and Mini with ISE 14.7, the way the cores of Andy Karpov are built
+# (karabas-go-core-tsconf/src/Makefile): sources -> karabas_<board>.bin -> v6z80p.kg (make_core.py of karabas-go-tools).
+# Mini G: not yet.
 #
-#   make                 the bitstream and the core file (v6z80p.kg)
-#   make go              the same
-#   make go-xst          one step: go-xst (.ngc), go-impl (.bin), go-core (.kg)
-#   make go-report       LUTs, slices, block RAMs and the timing result of the last build
+#   make                 all the boards (v6z80p.kg)
+#   make go|mini         one board: synthesis, implementation, bitstream, its part of v6z80p.kg
+#   make mini-xst        one step: <board>-xst (.ngc), <board>-impl (.bin), <board>-core (.kg)
+#   make mini-report     LUTs, slices, block RAMs and the timing result of the last build
 #   make clean           the intermediate files of ISE (not the .bin / .kg)
 #   make tests           the core files of the Z80 test programs: tests/out/<name>.kg (scripts/make_test_cores.py)
 #
@@ -14,7 +14,7 @@
 #   make regress         simulation: the regression, frames compared with sim/golden; regress-quick: the modes only
 #   make sim-clean       the simulation builds
 #
-# Inputs: karabas_go.prj (the source list: "rtl/...", the shared modules "../modules/rtl/..."), .xst, .ucf, .ut, core.json, roms/.
+# Inputs per board: karabas_<board>.prj (the source list: "rtl/...", the shared modules "../modules/rtl/..."), .xst, .ucf, .ut, core.json, roms/.
 # A step runs again when one of its inputs is newer than its output.
 #
 # Windows: run make from the MSYS2 shell (make, bash and python3 of MSYS2); ISE is called with the environment its
@@ -22,7 +22,7 @@
 # map sometimes stops silently in "Global Placement" (no .ncd): run make again.
 
 PART = xc6slx25-ftg256-2
-BOARDS = go
+BOARDS = go mini
 
 SHELL = /bin/bash
 .SHELLFLAGS = -e -o pipefail -c
@@ -57,6 +57,7 @@ BUILD_DATE := $(shell date +%y%m%d%H)
 # map / par options: the cost table (map -t, the placement seed) 2 meets all the constraints (the one-tick paths into the
 # SRAM / SDRAM IOB registers are close: see docs/OPEN_TASKS.md)
 MAP_T_go = 3
+MAP_T_mini = 2
 MAP_OPT = -logic_opt on -ol high -xe n -register_duplication on -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off
 PAR_OPT = -ol high -xe n -mt 4
 
@@ -104,7 +105,7 @@ $(foreach b,$(BOARDS),$(eval $(call board,$(b))))
 clean:
 	rm -f kg_*.stamp
 	rm -rf xst _ngo _xmsgs xlnx_auto_0_xdb iseconfig
-	rm -f karabas_go_osca_top.lso
+	rm -f karabas_*_osca_top.lso
 	rm -f $(foreach b,$(BOARDS),$(addprefix karabas_$(b),.ngc .ngd .ngr .syr .lso .bld .pcf .ncd _map.ncd _map.ngm \
 		_map.map _map.mrp _map.xrpt .par .pad _pad.csv _pad.txt .twr .twx .unroutes .xpi .ptwx .bgn .bit .drc \
 		_bitgen.xwbt _summary.xml _usage.xml _xst.xrpt _ngdbuild.xrpt _par.xrpt _guide.ncd))

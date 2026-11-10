@@ -33,11 +33,14 @@ module kg_osca_system (
     // clocks for the board top (one PLL, rising edges together)
     output wire        clk16,
     output wire        clk32,
+    output wire        clk8,                  // 8 MHz (the FT812 clock of the Mini / Mini G)
+    output wire        dvi_only,              // kg_mcu: the display takes DVI only (no HDMI audio)
     output wire        run,                   // the clocks have locked (clk16 domain)
     // video, clk32 domain (not registered): RGB with the OSD, the syncs (low active, VGA mode: 31.5 kHz)
     output wire [23:0] osd_rgb,
     output wire        mix_hs,
     output wire        mix_vs,
+    output wire        vid_de,                // the display area (DE of HDMI), aligned with osd_rgb
     // audio, clk16 registers: the mixer sums of OSCA's sound system as signed 16 bit
     output reg  [15:0] pcm_l = 16'h0000,
     output reg  [15:0] pcm_r = 16'h0000
@@ -54,20 +57,22 @@ module kg_osca_system (
     // clk96 and clk16 both come from one PLL (VCO 576 MHz = 96 MHz * 6): their rising edges coincide, as in the simulation.  (clk16 used to be the
     // memory wrapper's divide-by-6 counter through a BUFG: its edges came ~half a 96 MHz period late, so every clk16 <-> clk96 transfer on the
     // board was shifted by a tick against the simulation, and ISE did not analyse these paths.)  kg_osca_mem (KG_PLL16) aligns its tick counter to clk16.
-    wire pll_fb, clk96_pll, clk16_pll, clk32_pll, pll_locked;
+    wire pll_fb, clk96_pll, clk16_pll, clk32_pll, clk8_pll, pll_locked;
     PLL_BASE #(
         .BANDWIDTH("OPTIMIZED"), .CLK_FEEDBACK("CLKFBOUT"), .COMPENSATION("INTERNAL"),
         .DIVCLK_DIVIDE(1), .CLKFBOUT_MULT(6), .CLKFBOUT_PHASE(0.0), .CLKIN_PERIOD(10.417),
         .CLKOUT0_DIVIDE(6),  .CLKOUT0_PHASE(0.0), .CLKOUT0_DUTY_CYCLE(0.5),
         .CLKOUT1_DIVIDE(36), .CLKOUT1_PHASE(0.0), .CLKOUT1_DUTY_CYCLE(0.5),
         .CLKOUT2_DIVIDE(18), .CLKOUT2_PHASE(0.0), .CLKOUT2_DUTY_CYCLE(0.5),     // 32 MHz: the video output with the OSD (see below)
+        .CLKOUT3_DIVIDE(72), .CLKOUT3_PHASE(0.0), .CLKOUT3_DUTY_CYCLE(0.5),     // 8 MHz: FT_CLK_OUT of the Mini (unused on the Go)
         .REF_JITTER(0.1)
     ) u_pll (
         .CLKIN(clk96_raw), .CLKFBIN(pll_fb), .CLKFBOUT(pll_fb), .RST(~dcm_locked), .LOCKED(pll_locked),
-        .CLKOUT0(clk96_pll), .CLKOUT1(clk16_pll), .CLKOUT2(clk32_pll), .CLKOUT3(), .CLKOUT4(), .CLKOUT5());
+        .CLKOUT0(clk96_pll), .CLKOUT1(clk16_pll), .CLKOUT2(clk32_pll), .CLKOUT3(clk8_pll), .CLKOUT4(), .CLKOUT5());
     BUFG u_bufg96 (.I(clk96_pll), .O(clk96));
     BUFG u_bufg16 (.I(clk16_pll), .O(clk16));
     BUFG u_bufg32 (.I(clk32_pll), .O(clk32));
+    BUFG u_bufg8  (.I(clk8_pll),  .O(clk8));
 
     // reset: keep OSCA in reset until the DCM has locked (jumper_reset = 0 requests a reset)
     reg [3:0] lock_sr = 4'h0;
@@ -120,7 +125,7 @@ module kg_osca_system (
         .KB_SCANCODE(kb_scancode), .KB_SCANCODE_UPD(kb_scancode_upd), .XT_SCANCODE(), .XT_SCANCODE_UPD(),
         .PS2_COMMAND(16'h0000), .PS2_COMMAND_WR(1'b0),
         .JOY_L(joy_l), .JOY_R(joy_r), .BTNS(hw_btn),
-        .SOFTSW_COMMAND(softsw_command), .OSD_COMMAND(osd_command), .BUSY(mcu_busy),
+        .SOFTSW_COMMAND(softsw_command), .OSD_COMMAND(osd_command), .BUSY(mcu_busy), .DVI_ONLY(dvi_only),
         .RTC_A(8'h00), .RTC_DI(8'h00), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
         .UART_RX_DATA(), .UART_RX_IDX(), .UART_TX_DATA(8'h00), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
         .UART_DLM(8'h00), .UART_DLL(8'h00), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
@@ -159,6 +164,7 @@ module kg_osca_system (
     // ---------------------------------------------------------------- SoC
     wire [20:0] ma;  wire [15:0] md_o;  wire md_oe;
     wire col_red_a, col_red_b, col_red_c, col_red_d, col_green_a, col_green_b, col_green_c, col_green_d;
+    wire rgb_oe;
     wire col_blue_a, col_blue_b, col_blue_c, col_blue_d, horizontal_sync, tv_sync, audio_left, audio_right;  wire [9:0] audio_pcm_l, audio_pcm_r;
     wire kb_clk_pull, kb_dat_pull, kb_clk_line, kb_dat_line;
     wire sdc_clk, sdc_cs, sdc_din, sdc_pow, system_reset_out;
@@ -203,7 +209,7 @@ module kg_osca_system (
         .col_red_a(col_red_a), .col_red_b(col_red_b), .col_red_c(col_red_c), .col_red_d(col_red_d),
         .col_green_a(col_green_a), .col_green_b(col_green_b), .col_green_c(col_green_c), .col_green_d(col_green_d),
         .col_blue_a(col_blue_a), .col_blue_b(col_blue_b), .col_blue_c(col_blue_c), .col_blue_d(col_blue_d),
-        .horizontal_sync(horizontal_sync), .tv_sync(tv_sync),
+        .horizontal_sync(horizontal_sync), .tv_sync(tv_sync), .rgb_oe(rgb_oe),
         .audio_left(audio_left), .audio_right(audio_right), .audio_pcm_l(audio_pcm_l), .audio_pcm_r(audio_pcm_r),
         .ps2_kb_clock_in(kb_clk_line), .ps2_kb_data_in(kb_dat_line),
         .ps2_ms_clock_in(1'b1), .ps2_ms_data_in(1'b1),
@@ -375,6 +381,10 @@ module kg_osca_system (
     wire [7:0] mix_b = show_dbg ? dbg_b  : osca_b;
     assign     mix_hs = show_dbg ? dbg_hs : horizontal_sync;     // low active
     assign     mix_vs = show_dbg ? dbg_vs : tv_sync;
+    // DE: rgb_oe through a clk16 register, as the palette output register that clears the colours outside it (synchronous reset by ~rgb_oe)
+    reg de16 = 1'b0;
+    always @(posedge clk16) de16 <= rgb_oe;
+    assign vid_de = show_dbg ? 1'b1 : de16;
     kg_osd_overlay #(.H_OFFSET(160), .V_OFFSET(27), .H_DIV4_WIDTH(2000)) u_osd (
         .clk(clk32), .rgb_i({mix_r, mix_g, mix_b}), .rgb_o(osd_rgb),
         .hsync_i(~mix_hs), .vsync_i(~mix_vs), .v_offset(11'd0), .osd_command(osd_command));

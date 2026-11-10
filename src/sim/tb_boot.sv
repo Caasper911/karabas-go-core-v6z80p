@@ -12,6 +12,7 @@ module tb_boot;
     wire [20:0] ma; wire [15:0] md_o; wire md_oe; wire [15:0] md_i; wire [1:0] mwr_n, mrd_n;
     wire kb_clk_pull, kb_dat_pull, kb_clk_line, kb_dat_line;
     wire horizontal_sync, tv_sync, audio_left, audio_right;
+    wire rgb_oe;
     wire col_red_a, col_red_b, col_red_c, col_red_d, col_green_a, col_green_b, col_green_c, col_green_d, col_blue_a, col_blue_b, col_blue_c, col_blue_d;
     wire sys_reset;
     wire exp_a, exp_b;
@@ -106,7 +107,7 @@ module tb_boot;
     kg_osca_soc dut (
         .clk_mem(clk_mem), .clk16_gen(clk16), .clk16(clk16),
         .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(md_i), .mwr_n(mwr_n), .mrd_n(mrd_n),
-        .horizontal_sync(horizontal_sync), .tv_sync(tv_sync),
+        .horizontal_sync(horizontal_sync), .tv_sync(tv_sync), .rgb_oe(rgb_oe),
         .col_red_a(col_red_a), .col_red_b(col_red_b), .col_red_c(col_red_c), .col_red_d(col_red_d),
         .col_green_a(col_green_a), .col_green_b(col_green_b), .col_green_c(col_green_c), .col_green_d(col_green_d),
         .col_blue_a(col_blue_a), .col_blue_b(col_blue_b), .col_blue_c(col_blue_c), .col_blue_d(col_blue_d), .audio_left(audio_left), .audio_right(audio_right),
@@ -202,6 +203,22 @@ module tb_boot;
     wire [11:0] pix = {col_red_a, col_red_b, col_red_c, col_red_d, col_green_a, col_green_b, col_green_c, col_green_d,
                        col_blue_a, col_blue_b, col_blue_c, col_blue_d};
     integer nonblack = 0, shotn = 0, yellow = 0; reg want_shot = 1'b0;
+
+    // DECHK: the DE of HDMI (kg_osca_system: rgb_oe through a clk16 register) against the colours: pixels with a colour outside DE
+    // (must be 0), the DE pixels of a line, the DE lines of a frame, the first DE pixel after HSYNC falls
+    reg de_q = 1'b0, de_l = 1'b0;  integer de_out = 0, de_px = 0, de_line = 0, de_lines = 0, de_x0 = -1, de_hx = 0, de_frames = 0;
+    always @(posedge clk16) begin
+        if (pix != 12'd0 && !de_q) de_out = de_out + 1;
+        de_hx = de_hx + 1;
+        if (de_q) begin de_line = de_line + 1; if (de_x0 < 0) de_x0 = de_hx; end
+        if (hs_q && !horizontal_sync) begin if (de_line != 0) begin de_px = de_line; de_lines = de_lines + 1; end de_line = 0; de_hx = 0; end
+        if (vs_q && !tv_sync) begin
+            if (de_frames < 3 && de_lines != 0) $display("DECHK frame: %0d DE lines x %0d pixels, first DE pixel %0d after HSYNC falls, coloured pixels outside DE so far %0d", de_lines, de_px, de_x0, de_out);
+            de_frames = de_frames + 1; de_lines = 0; de_x0 = -1;
+        end
+        de_q <= rgb_oe;
+    end
+    final $display("DECHK coloured pixels outside DE: %0d", de_out);
     integer sx, sy;
     always @(posedge clk16) begin
         hs_q <= horizontal_sync; vs_q <= tv_sync;

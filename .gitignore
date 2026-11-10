@@ -65,3 +65,8 @@ _xmsgs/
 !src/karabas_go.ut
 src/kg_*.stamp
 src/tests/out/
+
+# the build inputs of the boards (ISE writes other *.prj / *.xst / *.ut files of its own)
+!src/karabas_*.prj
+!src/karabas_*.xst
+!src/karabas_*.ut

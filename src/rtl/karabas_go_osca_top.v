@@ -48,8 +48,8 @@ module karabas_go_osca_top (
         .mcu_burst_cs_n(MCU_SPI_IO[1]), .mcu_burst_ready(mcu_burst_ready),
         .SDR_CLK(SDR_CLK), .SDR_RAS_N(SDR_RAS_N), .SDR_CAS_N(SDR_CAS_N), .SDR_WE_N(SDR_WE_N),
         .SDR_BA(SDR_BA), .SDR_A(SDR_A), .SDR_DQM(SDR_DQM), .SDR_DQ(SDR_DQ),
-        .clk16(clk16), .clk32(clk32), .run(run),
-        .osd_rgb(osd_rgb), .mix_hs(mix_hs), .mix_vs(mix_vs),
+        .clk16(clk16), .clk32(clk32), .clk8(), .dvi_only(), .run(run),
+        .osd_rgb(osd_rgb), .mix_hs(mix_hs), .mix_vs(mix_vs), .vid_de(),
         .pcm_l(pcm_l), .pcm_r(pcm_r));
 
     // The board has a VGA DAC clocked by V_CLK (as in the NanoMig / Profi cores): RGB and syncs registered on the pixel clock (32 MHz,

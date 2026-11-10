@@ -15,6 +15,7 @@ module osca_core (
     input wire [7:0] vram_rdata,
     input wire [7:0] vram_rdata2,
     output wire [18:0] linecop_pc_o,
+    output wire        rgb_oe_o,           // Karabas port: the display area (video_sync_gen7 rgb_enable; the palette output is cleared outside it, a clk16 later): DE of HDMI
     output wire        linecop_busy_o,     // Karabas Go port: the line copper runs (the SDRAM controller reads ahead for it only then, in an FPGA bus window)
     output wire [18:0] vram_addr_out,
     output wire [7:0] spr_wdata,
@@ -1126,6 +1127,7 @@ module osca_core (
 
     assign linecop_pc_o = linecop_pc[18:0];
     assign linecop_busy_o = linecop_busy;
+    assign rgb_oe_o = rgb_oe;
     assign dbg_core = {cpu_databus_in[7:0], XLXN_2825, XLXN_7421, XLXN_2828, background_pixel, ywindow, xwindow, rgb_oe, palette_index};
     assign dbg_pal = {colour_select[8], palette_wr_addr[8]};
     assign dbg_pdata = {dbg_pd1, dbg_pd0};
