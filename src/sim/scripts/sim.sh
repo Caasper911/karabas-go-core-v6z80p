@@ -21,7 +21,9 @@ VFLAGS=(--binary --timing -Wno-fatal -Wno-lint -Wno-style -Wno-WIDTH -Wno-MULTID
         $CPU_DEFS -DTV80_REFRESH ${KG_EXTRA_DEFS:-} --top-module tb_boot -O1 -j "$JOBS" -GSIM_MS="$SIM_MS" -GIMG_BYTES="$IMG_BYTES")
 
 design_files() {   # the design (the rtl tree given as $1, all subfolders) and the simulation models (src/sim), full paths
+  # (kg_sd_emu, the emulated SD card of the board, is in the testbench too (+sdimg): its RAM kg_tdpram is in karabas-go-modules)
   find "$1" -name '*.v' | grep -vE '/(osca_pal\.v|karabas_go_osca_top\.v)$' | sort
+  echo "$SRC/../modules/rtl/mem/kg_tdpram.v"
   ( cd "$SIM" && ls *.v | grep -v '^tb_' | sed "s|^|$SIM/|" ); ls "$SIM"/tv80/*.v; echo "$SIM/tb_sdram_model.v"
 }
 

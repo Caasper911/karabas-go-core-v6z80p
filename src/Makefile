@@ -56,7 +56,7 @@ BUILD_DATE := $(shell date +%y%m%d%H)
 
 # map / par options: the cost table (map -t, the placement seed) 2 meets all the constraints (the one-tick paths into the
 # SRAM / SDRAM IOB registers are close: see docs/OPEN_TASKS.md)
-MAP_T_go = 2
+MAP_T_go = 3
 MAP_OPT = -logic_opt on -ol high -xe n -register_duplication on -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off
 PAR_OPT = -ol high -xe n -mt 4
 
@@ -64,7 +64,7 @@ PAR_OPT = -ol high -xe n -mt 4
 INCLUDES = $(wildcard ../modules/rtl/mcu/*.vh)
 
 .PHONY: all clean $(BOARDS) $(BOARDS:=-xst) $(BOARDS:=-impl) $(BOARDS:=-core) $(BOARDS:=-report) \
-	unit sim-build sim-ref regress regress-quick sim-clean
+	unit sim-build sim-ref regress regress-quick sim-clean sd-unit
 
 all: $(BOARDS)
 
@@ -121,3 +121,8 @@ sim-ref:       ; sim/scripts/sim.sh build ref
 regress:       ; sim/scripts/sim.sh regress
 regress-quick: ; sim/scripts/sim.sh regress --only planar4,tiles16,linedraw,sprites2,cpu_vram
 sim-clean:     ; rm -rf sim/build
+# the emulated SD card (kg_sd_emu) against an SPI master like OSCA's and the command sequence of the FLOS driver
+sd-unit:
+	mkdir -p sim/build
+	iverilog -g2012 -o sim/build/sdemu.vvp sim/tb_kg_sd_emu.v rtl/io/kg_sd_emu.v ../modules/rtl/mem/kg_tdpram.v
+	vvp sim/build/sdemu.vvp | grep -E "MISMATCH|SD EMU|TIMEOUT"

@@ -15,6 +15,7 @@ module osca_core (
     input wire [7:0] vram_rdata,
     input wire [7:0] vram_rdata2,
     output wire [18:0] linecop_pc_o,
+    output wire        linecop_busy_o,     // Karabas Go port: the line copper runs (the SDRAM controller reads ahead for it only then, in an FPGA bus window)
     output wire [18:0] vram_addr_out,
     output wire [7:0] spr_wdata,
     output wire spr_wdata_oe,
@@ -1124,6 +1125,7 @@ module osca_core (
     assign cpu_address_bus[15] = cpu_address_bus_tb0[15] | cpu_address_bus_tb1[15];
 
     assign linecop_pc_o = linecop_pc[18:0];
+    assign linecop_busy_o = linecop_busy;
     assign dbg_core = {cpu_databus_in[7:0], XLXN_2825, XLXN_7421, XLXN_2828, background_pixel, ywindow, xwindow, rgb_oe, palette_index};
     assign dbg_pal = {colour_select[8], palette_wr_addr[8]};
     assign dbg_pdata = {dbg_pd1, dbg_pd0};

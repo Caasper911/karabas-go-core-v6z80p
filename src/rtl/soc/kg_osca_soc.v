@@ -45,6 +45,7 @@ module kg_osca_soc (
     // SD card (SPI), serial, joystick, PIC link, EEPROM
     output wire sdc_clk, sdc_cs, sdc_din, sdc_pow,
     input  wire sdc_dout,
+    input  wire sd_wait,                   // the emulated SD card waits for its sector (kg_sd_emu): CPU reads of the SPI port ($0A) wait
     output wire serial_tx_pin,
     input  wire serial_rx_pin,
     output wire joystick_clock_out,
@@ -105,14 +106,16 @@ module kg_osca_soc (
     wire        mreq_n_bus, iorq_n_bus, rd_n_bus, wr_n_bus;
     wire        busak_n, m1_n;
     wire        sdram_wait_n;
+    reg         spi_wait_q = 1'b0;    // see sd_wait below
     assign dbg = {system_reset_out, z80_wait, sdram_wait_n, busak_n, wr_n_bus, rd_n_bus, iorq_n_bus, mreq_n_bus, m1_n, d_bus, a_bus};
     wire [18:0] linecop_pc_o;
+    wire        linecop_busy;
     wire        sdram_rd_valid;      // system RAM read data valid (CPU WAIT, line copper wait)
 
     osca_core core (
         .clk_fast(clk_mem),
         .dbg_core(dbg3), .dbg_vr(dbg5), .dbg_wce(dbg6), .dbg_bus(dbg7), .dbg_pal(dbg4), .dbg_paddr(dbg_paddr), .dbg_pdata(dbg_pdata), .dbg_fixpal(dbg_fixpal), .dbg_pwlog(dbg8),
-        .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .linecop_mem_ready(sdram_rd_valid), .vram_addr_out(vram_addr_out),
+        .vram_wdata(vram_wdata), .vram_wdata_oe(vram_wdata_oe), .vram_rdata(vram_rdata), .vram_rdata2(vram_rdata2), .linecop_pc_o(linecop_pc_o), .linecop_busy_o(linecop_busy), .linecop_mem_ready(sdram_rd_valid), .vram_addr_out(vram_addr_out),
         .spr_wdata(spr_wdata), .spr_wdata_oe(spr_wdata_oe), .spr_rdata(spr_rdata),
         .spr_ram_wr(spr_ram_wr), .spr_ram_rd(spr_ram_rd), .spr_addrbus(spr_addrbus),
         .vram_rd(vram_rd), .vram_wr(vram_wr),
@@ -146,7 +149,7 @@ module kg_osca_soc (
         .expansion_pin_a(expansion_pin_a), .expansion_pin_b(expansion_pin_b));
 
     kg_osca_cpu cpu (
-        .clk(clk16), .clk_fast(clk_mem), .clk16_raw(clk16_gen), .reset_n(system_reset_out), .wait_n(z80_wait), .ext_wait_n(sdram_wait_n), .int_n(z80_int), .nmi_n(z80_nmi),
+        .clk(clk16), .clk_fast(clk_mem), .clk16_raw(clk16_gen), .reset_n(system_reset_out), .wait_n(z80_wait), .ext_wait_n(sdram_wait_n & ~spi_wait_q), .int_n(z80_int), .nmi_n(z80_nmi),
         .busrq_n(z80_busreq), .busak_n(busak_n), .m1_n(m1_n),
         .fpga_a(z80_addr_o), .fpga_mreq_n(z80_mreq_o), .fpga_iorq_n(z80_ioreq_o),
         .fpga_rd_n(z80_read_o), .fpga_wr_n(z80_write_o),
@@ -185,12 +188,17 @@ module kg_osca_soc (
         .clk(clk_mem), .reset(sdram_reset),
         .addr(sys_addr_m), .cs_n(sys_cs_m), .wr_n(sys_wr_m), .wdata(sys_wd_m),
         .block_refresh(~z80_busreq | ~busak_n), .dma_owns(~busak_n), .cap_late(sdram_cap_late),
-        .hint_addr(linecop_pc_o),                        // the line copper reads its list sequentially: keep its word and the next one loaded         // the DMA cannot be stalled: no refresh while the FPGA asks for / owns the bus
+        .hint_addr(linecop_pc_o), .lc_busy(linecop_busy),                        // the line copper reads its list sequentially: keep its word and the next one loaded         // the DMA cannot be stalled: no refresh while the FPGA asks for / owns the bus
         .rdata(sys_rdata), .rd_valid(sdram_rd_valid), .wr_pending(sdram_wr_pending), .init_done(sdram_init_done),
         .sd_ba(sd_ba), .sd_a(sd_a), .sd_dqm(sd_dqm), .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_dq(sd_dq));
 `endif
     // the CPU waits while it reads a system RAM word that is not there yet
     assign sdram_wait_n = ~(busak_n & ~ld_active & ~system_ram_cs & ~rd_n_bus & ~sdram_rd_valid);
+    // an IN from the SPI port ($0A) while the emulated SD card waits for the MCU: the CPU waits (registered: the I/O cycle has its automatic
+    // wait state, the CPU samples WAIT well after IORQ# falls) - but never while the core asks for the bus (BUSRQ#, the audio / line copper
+    // DMA of each scan line): a CPU in WAIT cannot give the bus, the picture of FLOS (line copper) broke.  So each poll of FLOS waits until
+    // the next scan line at most (its 8000 polls of the data token: ~0.5 s instead of ~80 ms), the DMA runs as always.
+    always @(posedge clk_mem) spi_wait_q <= sd_wait & z80_busreq & busak_n & ~iorq_n_bus & ~rd_n_bus & m1_n & (a_bus[7:0] == 8'h0A);
     assign chk_rdata = sys_rdata;
     assign chk_rdvalid = sdram_rd_valid;
     assign dbg2 = {vram_wr, vram_wdata, vram_rdata, vram_rdata2};

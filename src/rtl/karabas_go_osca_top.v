@@ -28,6 +28,7 @@ module karabas_go_osca_top (
     // MCU (USB keyboard / mouse / joysticks)
     input  wire        MCU_MOSI, MCU_SCK, MCU_CS_N,
     output wire        MCU_MISO,
+    inout  wire [1:0]  MCU_SPI_IO,        // bursts (karabas-go-firmware docs/burst_protocol.md): [0] READY (N9), [1] burst CS_N (M11)
     // SDRAM (system RAM); CS_N and CKE are tied on the board
     output wire        SDR_CLK, SDR_RAS_N, SDR_CAS_N, SDR_WE_N,
     output wire [1:0]  SDR_BA,
@@ -92,6 +93,9 @@ module karabas_go_osca_top (
     reg  [11:0] joy_s1 = 12'd0, joy_s2 = 12'd0;      // kg_mcu runs on clk96: two clk16 registers before the core reads them
     always @(posedge clk16) begin joy_s1 <= {joy_r[7], joy_r[6], joy_r[4], joy_r[3], joy_r[2], joy_r[1], joy_l[7], joy_l[6], joy_l[4], joy_l[3], joy_l[2], joy_l[1]}; joy_s2 <= joy_s1; end
     wire [2:0] unused_ms_b;
+    wire mcu_burst_ready;                // a sector read of the file mounter comes as one burst instead of 512 frames
+    assign MCU_SPI_IO[0] = mcu_burst_ready;
+    assign MCU_SPI_IO[1] = 1'bz;
     wire        rom_wr;
     wire [31:0] rom_addr;
     wire [7:0]  rom_data;
@@ -101,10 +105,13 @@ module karabas_go_osca_top (
     wire        mcu_busy;
     reg  sd_init_ever = 1'b0;                      // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
     always @(posedge clk96) if (sd_init) sd_init_ever <= 1'b1;
-    kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
+    // the file mounter (ENABLE_IMG): slot 0 = the image of the emulated SD card (kg_sd_emu, OSD item "SD image")
+    wire [7:0]  img_mounted, img_data, img_result;  wire [63:0] img_size;  wire img_data_wr, img_result_wr, img_q_wr, img_q_ack;
+    wire [8:0]  img_data_addr;  wire [15:0] img_sum;  wire [23:0] img_q_di;
+    kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0), .ENABLE_IMG(1)) u_mcu (
         .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever & chk_done),   // the loader starts after the SDRAM initialisation (and the calibration with KG_SDRAM_CAL): the image is written with the final settings
         .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
-        .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(1'b1), .MCU_BURST_READY(),
+        .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(MCU_SPI_IO[1]), .MCU_BURST_READY(mcu_burst_ready),
         .MS_X(), .MS_Y(), .MS_B(unused_ms_b), .MS_Z(), .MS_UPD(),
         .KB_STATUS(), .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
         .KB_SCANCODE(kb_scancode), .KB_SCANCODE_UPD(kb_scancode_upd), .XT_SCANCODE(), .XT_SCANCODE_UPD(),
@@ -115,16 +122,19 @@ module karabas_go_osca_top (
         .UART_RX_DATA(), .UART_RX_IDX(), .UART_TX_DATA(8'h00), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
         .UART_DLM(8'h00), .UART_DLL(8'h00), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
         .FT_MISO(1'b0), .SD2_MISO(1'b0), .MATRIX_CMD(24'h000000), .MATRIX_CMD_WR(1'b0),
-        .DEBUG_ADDR(16'h0000), .DEBUG_DATA(16'h0000), .IMG_Q_WR(1'b0), .IMG_Q_DI(24'h000000),
+        .DEBUG_ADDR(16'h0000), .DEBUG_DATA(16'h0000),
+        .IMG_MOUNTED(img_mounted), .IMG_SIZE(img_size), .IMG_DATA_WR(img_data_wr), .IMG_DATA_ADDR(img_data_addr), .IMG_DATA(img_data),
+        .IMG_RESULT_WR(img_result_wr), .IMG_RESULT(img_result), .IMG_SUM(img_sum), .IMG_Q_WR(img_q_wr), .IMG_Q_DI(img_q_di), .IMG_Q_ACK(img_q_ack),
         .FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'b00), .ESP_UART_RX_DATA(8'h00), .ESP_UART_RX_WR(1'b0),
         .ROMLOADER_ACTIVE(romloader_active), .ROMLOAD_ADDR(rom_addr), .ROMLOAD_DATA(rom_data), .ROMLOAD_WR(rom_wr),
         .FLASHBOOT_START(1'b0), .FLASHBOOT_COREID(5'h00), .PRN_DATA(8'h00), .PRN_WR(1'b0));
 
     // ---------------------------------------------------------------- OSD switches (core.json "osd": the items with a value, in their order)
-    //   register 0: Reset (T, F12)
-    wire [1*8-1:0] softsw;
-    kg_soft_switches #(.N(1)) u_softsw (.clk(clk96), .command(softsw_command), .regs(softsw), .upd());
+    //   register 0: Reset (T, F12);  1: SD card (0 the card in the slot of the board, 1 the image of the OSD item "SD image")
+    wire [2*8-1:0] softsw;
+    kg_soft_switches #(.N(2)) u_softsw (.clk(clk96), .command(softsw_command), .regs(softsw), .upd());
     wire kb_reset = softsw[0];
+    wire sd_img   = softsw[8];
     // reset of the core (as the cores of karabas-go: the OSD Reset, the reset button of the board, the MCU busy): OSCA's reset input
     // (jumper_reset, low = reset) is held while it is requested; then its boot ROM jumps to FLOS again ($1010, FLOS stays in RAM)
     reg [2:0] rst_req_s = 3'b000;
@@ -149,6 +159,7 @@ module karabas_go_osca_top (
     wire col_blue_a, col_blue_b, col_blue_c, col_blue_d, horizontal_sync, tv_sync, audio_left, audio_right;  wire [9:0] audio_pcm_l, audio_pcm_r;
     wire kb_clk_pull, kb_dat_pull, kb_clk_line, kb_dat_line;
     wire sdc_clk, sdc_cs, sdc_din, sdc_pow, system_reset_out;
+    wire emu_miso, emu_wait;             // MISO of the emulated SD card (kg_sd_emu); it waits for the MCU (the CPU waits on the SPI port)
 
     // the port of the loader / self test into the SDRAM controller: registered (one clk96 later, all four signals alike) to keep the controller's address path short
     reg        ld_act_r = 1'b0, ld_wr_r = 1'b0;  reg [31:0] ld_addr_r = 32'd0;  reg [7:0] ld_data_r = 8'd0;
@@ -195,7 +206,7 @@ module karabas_go_osca_top (
         .ps2_ms_clock_in(1'b1), .ps2_ms_data_in(1'b1),
         .ps2_kb_clock_out(kb_clk_pull), .ps2_kb_data_out(kb_dat_pull),
         .ps2_ms_clock_out(), .ps2_ms_data_out(),
-        .sdc_clk(sdc_clk), .sdc_cs(sdc_cs), .sdc_din(sdc_din), .sdc_pow(sdc_pow), .sdc_dout(SD_DO),
+        .sdc_clk(sdc_clk), .sdc_cs(sdc_cs), .sdc_din(sdc_din), .sdc_pow(sdc_pow), .sdc_dout(sd_img ? emu_miso : SD_DO), .sd_wait(sd_img & emu_wait),
         .serial_tx_pin(), .serial_rx_pin(1'b1),
         .joystick_clock_out(), .joystick_data_in(1'b1),        // the PIC link (serjoy2) is not used
         .joy_bits(joy_s2),   // OSCA port 1 = JOY_R, port 0 = JOY_L (synchronised to clk16)
@@ -391,8 +402,33 @@ module karabas_go_osca_top (
                                       .din(DAC_DAT), .bck(DAC_BCK), .lrck(DAC_LRCK));
     assign DAC_MUTE = 1'b1;
 
-    // SD card straight from the core's SPI engine (pow is ignored)
+    // SD card: the core's SPI engine (pow is ignored) on the card in the slot of the board, or on the emulated card on the image of the
+    // file mounter (OSD "SD card" = Image; the card of the board is deselected then)
     assign SD_CLK  = sdc_clk;
-    assign SD_CS_N = sdc_cs;
+    assign SD_CS_N = sd_img ? 1'b1 : sdc_cs;
     assign SD_DI   = sdc_din;
+
+    // the reset of the core, for the emulated card (it starts idle again, as a card after a power cycle of the machine)
+    reg [1:0] emu_rst_s = 2'b11;
+    always @(posedge clk96) emu_rst_s <= {emu_rst_s[0], ~(run & ~load_s[1] & init_s[1] & ~rst_req)};
+    wire        sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe, hd_rd, hd_wr;
+    wire [2:0]  sdc_slot;  wire [8:0] sdc_byte_addr;  wire [7:0] sdc_byte_in_data, hd_byte_out_data, sdc_img_mounted;
+    wire [63:0] sdc_img_size;  wire [31:0] hd_lba;
+    // the sector interface of the file mounter: one requester (slot 0); TIMEOUT ~175 ms at 96 MHz (the MCU answers in 5-15 ms)
+    img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'hFFFFFF)) u_sdc (
+        .clk(clk96), .reset(1'b0),
+        .img_mounted(img_mounted), .img_size(img_size), .img_data_wr(img_data_wr), .img_data_addr(img_data_addr), .img_data(img_data),
+        .img_result_wr(img_result_wr), .img_result(img_result), .img_sum(img_sum), .img_q_wr(img_q_wr), .img_q_di(img_q_di), .img_q_ack(img_q_ack),
+        .sdc_img_mounted(sdc_img_mounted), .sdc_img_size(sdc_img_size),
+        .sdc_rd({7'd0, hd_rd}), .sdc_wr({7'd0, hd_wr}), .sdc_sector(hd_lba),
+        .sdc_busy(sdc_busy), .sdc_done(sdc_done), .sdc_error(sdc_error), .sdc_slot(sdc_slot),
+        .sdc_byte_in_strobe(sdc_byte_in_strobe), .sdc_byte_addr(sdc_byte_addr), .sdc_byte_in_data(sdc_byte_in_data),
+        .sdc_byte_out_data(hd_byte_out_data), .active());
+    kg_sd_emu u_sdemu (
+        .clk(clk96), .reset(emu_rst_s[1]),
+        .sclk(sdc_clk), .mosi(sdc_din), .cs_n(sdc_cs), .miso(emu_miso),
+        .img_mounted(sdc_img_mounted[0]), .img_size(|sdc_img_size[63:32] ? 32'hFFFFFE00 : sdc_img_size[31:0]),
+        .hd_rd(hd_rd), .hd_wr(hd_wr), .hd_lba(hd_lba), .hd_busy(sdc_busy), .hd_done(sdc_done), .hd_error(sdc_error),
+        .hd_byte_in_strobe(sdc_byte_in_strobe), .hd_byte_addr(sdc_byte_addr), .hd_byte_in_data(sdc_byte_in_data),
+        .hd_byte_out_data(hd_byte_out_data), .waiting(emu_wait));
 endmodule

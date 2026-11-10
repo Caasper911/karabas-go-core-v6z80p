@@ -42,6 +42,67 @@ module tb_boot;
         $display("%0t ms: ROM loader finished (%0d bytes), core released", $time/1000000, IMG_BYTES);
     end
 
+    // ---------------- the SD card: +sdimg=<file> = the emulated card of the board (kg_sd_emu) on an image file, with a stand-in
+    // for img_sdc (the sector from the file after a delay like the MCU's); without it no card (MISO high)
+    wire t_sclk, t_cs, t_mosi, t_miso, t_wait;
+    reg  sd_on = 1'b0;  integer sd_fd = 0;  reg [8*256-1:0] sd_name;  reg sd_mount = 1'b0;  reg [31:0] sd_size = 32'd0;
+    wire sd_rd, sd_wr;  wire [31:0] sd_lba;  wire [7:0] sd_out;
+    reg  sd_busy = 1'b0, sd_done = 1'b0, sd_strobe = 1'b0;  reg [8:0] sd_addr = 9'd0;  reg [7:0] sd_data = 8'd0;
+    initial begin
+        if ($value$plusargs("sdimg=%s", sd_name)) begin
+            sd_fd = $fopen(sd_name, "rb");
+            if (sd_fd == 0) $display("SDIMG: cannot open %0s", sd_name);
+            else begin
+                sd_on = 1'b1;  void'($fseek(sd_fd, 0, 2));  sd_size = $ftell(sd_fd);
+                $display("SDIMG: %0s, %0d bytes", sd_name, sd_size);
+                repeat (100) @(posedge clk_mem); sd_mount = 1'b1; @(posedge clk_mem); sd_mount = 1'b0;
+            end
+        end
+    end
+    kg_sd_emu u_sdemu (.clk(clk_mem), .reset(~sys_reset), .sclk(t_sclk), .mosi(t_mosi), .cs_n(t_cs), .miso(t_miso),
+        .img_mounted(sd_mount), .img_size(sd_size), .hd_rd(sd_rd), .hd_wr(sd_wr), .hd_lba(sd_lba), .hd_busy(sd_busy), .hd_done(sd_done), .hd_error(1'b0),
+        .hd_byte_in_strobe(sd_strobe), .hd_byte_addr(sd_addr), .hd_byte_in_data(sd_data), .hd_byte_out_data(sd_out), .waiting(t_wait));
+    // SDX: the bytes of the SPI exchanges (the master's byte, the card's byte, CS), the first 400
+    integer sdx_n = 0;
+    always @(posedge clk_mem) if (sd_on && u_sdemu.xfer && sdx_n < 400) begin
+        sdx_n = sdx_n + 1;
+        $display("SDX %0d ms: cs_n=%b tx=%02h sent=%02h state=%0d cmd=%0d", ms, u_sdemu.xfer_cs_n, u_sdemu.tx, u_sdemu.sent, u_sdemu.state, u_sdemu.cmd);
+    end
+    // SDR: the byte the core's SPI engine received, at the end of each exchange (busy falls), and its speed bit
+    integer sdr_n = 0;  reg sdr_busy_d = 1'b0;
+    always @(posedge clk_mem) begin
+        sdr_busy_d <= dut.core.spi_busy;
+        if (sd_on && sdr_busy_d && !dut.core.spi_busy && sdr_n < 60) begin
+            sdr_n = sdr_n + 1;
+            $display("SDR %0d ms: core received %02h  (speed=%b)", ms, dut.core.received_spi_byte, dut.core.spi_speed);
+        end
+    end
+    integer sd_delay = 20000, sd_dms;  initial if ($value$plusargs("sddelay=%d", sd_dms)) sd_delay = sd_dms * 96000;
+    reg [7:0] sd_sec [0:511];  reg [2:0] sd_st = 3'd0;  reg sd_w = 1'b0;  reg [31:0] sd_l = 32'd0;  integer sd_cnt = 0, sd_i = 0, sd_k;
+    always @(posedge clk_mem) begin
+        sd_busy <= 1'b0; sd_done <= 1'b0; sd_strobe <= 1'b0;
+        case (sd_st)
+            3'd0: if (sd_rd || sd_wr) begin
+                    sd_busy <= 1'b1; sd_w <= sd_wr; sd_l <= sd_lba; sd_cnt <= 0; sd_st <= 3'd1;
+                    $display("SDIMG %0d ms: %s sector %0d", ms, sd_wr ? "write" : "read", sd_lba);
+                    if (!sd_wr) begin
+                        void'($fseek(sd_fd, sd_lba * 512, 0));
+                        for (sd_k = 0; sd_k < 512; sd_k = sd_k + 1) sd_sec[sd_k] = $fgetc(sd_fd);
+                    end
+                  end
+            3'd1: begin sd_cnt <= sd_cnt + 1; if (sd_cnt == sd_delay) begin sd_i <= 0; sd_st <= sd_w ? 3'd4 : 3'd2; end end   // +sddelay=N ms (default 0.2 ms; 5-40 ms on the board)
+            3'd2: begin sd_strobe <= 1'b1; sd_addr <= sd_i[8:0]; sd_data <= sd_sec[sd_i]; sd_i <= sd_i + 1; if (sd_i == 511) sd_st <= 3'd4; end
+            3'd4: begin sd_done <= 1'b1; sd_st <= 3'd0; end
+            default: sd_st <= 3'd0;
+        endcase
+    end
+
+    // WPPHASE: the tick of clk_mem (0..5, kg_osca_mem's counter) in which wp_pulse is high (the write registers load at the end of it),
+    // and the tick in which pal_* / colour_select ... see karabas_go.ucf (the relaxation of paths from the write registers)
+    integer wpph [0:5]; integer wpi; initial for (wpi = 0; wpi < 6; wpi = wpi + 1) wpph[wpi] = 0;
+    always @(posedge clk_mem) if (dut.core.wp_pulse) wpph[dut.mem.tick] = wpph[dut.mem.tick] + 1;
+    final $display("WPPHASE ticks 0..5: %0d %0d %0d %0d %0d %0d", wpph[0], wpph[1], wpph[2], wpph[3], wpph[4], wpph[5]);
+
     kg_osca_soc dut (
         .clk_mem(clk_mem), .clk16_gen(clk16), .clk16(clk16),
         .ma(ma), .md_o(md_o), .md_oe(md_oe), .md_i(md_i), .mwr_n(mwr_n), .mrd_n(mrd_n),
@@ -51,7 +112,8 @@ module tb_boot;
         .col_blue_a(col_blue_a), .col_blue_b(col_blue_b), .col_blue_c(col_blue_c), .col_blue_d(col_blue_d), .audio_left(audio_left), .audio_right(audio_right),
         .ps2_kb_clock_in(kb_clk_line), .ps2_kb_data_in(kb_dat_line), .ps2_ms_clock_in(1'b1), .ps2_ms_data_in(1'b1),
         .ps2_kb_clock_out(kb_clk_pull), .ps2_kb_data_out(kb_dat_pull),
-        .sdc_dout(1'b1), .serial_rx_pin(1'b1), .joystick_data_in(1'b1),
+        .sdc_clk(t_sclk), .sdc_cs(t_cs), .sdc_din(t_mosi), .sdc_pow(),
+        .sdc_dout(sd_on ? t_miso : 1'b1), .sd_wait(sd_on & t_wait), .serial_rx_pin(1'b1), .joystick_data_in(1'b1),
         .ld_active(ld_active), .ld_addr(ld_addr), .ld_data(ld_data), .ld_wr(ld_wr),
         .sdram_reset(sd_rst), .sdram_cap_late(1'b0), .dbg_paddr(9'd1), .dbg_fixpal(1'b0), .v_en(1'b0), .v_addr(19'd0), .v_wr_n(1'b1), .v_wd(8'd0), .t_en(1'b0), .t_ma(21'd0), .t_md(16'd0), .t_oe(1'b0), .t_wr_n(2'b11), .t_rd_n(2'b11), .sdram_init_done(sd_init), .sd_ba(sd_ba), .sd_a(sd_a), .sd_dqm(sd_dqm), .sd_ras_n(sd_ras_n), .sd_cas_n(sd_cas_n), .sd_we_n(sd_we_n), .sd_dq(sd_dq),
         .jumper_nmi(1'b1), .jumper_reset(~ld_active), .jumper_vga(1'b0),

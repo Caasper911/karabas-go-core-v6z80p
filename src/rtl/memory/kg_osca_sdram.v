@@ -31,6 +31,7 @@ module kg_osca_sdram #(
     input  wire        wr_n,
     input  wire [7:0]  wdata,
     input  wire        block_refresh,
+    input  wire        lc_busy,            // the line copper runs: inside an FPGA bus window the read ahead (for it) is allowed only then, not while the audio DMA reads
     input  wire        dma_owns,           // 1 while the FPGA (audio / line copper DMA) owns the bus: reads start from the bus address at once (that DMA cannot wait)
     input  wire        cap_late,           // 0: read data taken from the pins at clock 6 (access = 7 clocks); 1: from the IOB flip-flop at clock 7 (access = 8 clocks)
     input  wire [18:0] hint_addr,          // address the FPGA will read next (line copper PC + 2): read ahead in the background
@@ -50,9 +51,9 @@ module kg_osca_sdram #(
     localparam CMD_NOP = 3'b111, CMD_ACTIVE = 3'b011, CMD_READ = 3'b101, CMD_WRITE = 3'b100,
                CMD_PRECHARGE = 3'b010, CMD_REFRESH = 3'b001, CMD_MODE = 3'b000;
     localparam [12:0] MODE = 13'b000_0_00_010_0_000;          // CAS 2, burst length 1
-    localparam ST_INIT = 2'd0, ST_IDLE = 2'd1, ST_ACC = 2'd2, ST_REF = 2'd3;
+    localparam ST_INIT = 3'd0, ST_IDLE = 3'd1, ST_ACC = 3'd2, ST_REF = 3'd3, ST_HPRE = 3'd4;
 
-    reg [1:0]  state = ST_INIT;
+    reg [2:0]  state = ST_INIT;
     reg [2:0]  step = 3'd0;
     reg [15:0] wait_cnt = 16'd0;
     reg [3:0]  init_step = 4'd0;
@@ -88,8 +89,10 @@ module kg_osca_sdram #(
     // No read ahead between the FPGA's bus request and the moment it owns the bus: the first read of the DMA (audio: data taken 12 ticks after the
     // address change, no wait possible) would have to wait for it (seen in the simulation with the T80pa bus model).  Registered: BUSAK# comes from a T80 register.
     reg br_q = 1'b0, dma_q = 1'b0;
-    always @(posedge clk) begin br_q <= block_refresh; dma_q <= dma_owns; end
-    wire hint_ok = !(br_q && !dma_q);
+    reg lc_q = 1'b0;
+    always @(posedge clk) begin br_q <= block_refresh; dma_q <= dma_owns; lc_q <= lc_busy; end
+    // and, while the FPGA owns the bus, only for the line copper: the audio DMA reads first in the window and must never wait behind a read ahead
+    wire hint_ok = !(br_q && !dma_q) && (!dma_q || lc_q);
     wire hitq_rd = rd_ok && rd_wa == wa_q, hitq_e0 = e0_ok && e0_cwa == wa_q, hitq_e1 = e1_ok && e1_cwa == wa_q, hitq_hint = hitq_e0 || hitq_e1;
     wire need_read_q = !(hitq_rd || hitq_hint);
     wire [15:0] hint_hit_word = hit_e0 ? e0_word : e1_word;
@@ -190,11 +193,14 @@ module kg_osca_sdram #(
         end
 
         ST_IDLE: begin
+            // The row address goes into the IOB registers every idle clock, chosen by registers only (pw, the addresses): the bank / row
+            // of a write or of the current word.  (Chosen by the hit comparisons, as before, the path did not fit in a clock.)  A read
+            // ahead loads its row in ST_HPRE first and starts a clock later.
+            sd_ba <= pw ? pw_addr[11:10] : wa_q[10:9];
+            sd_a  <= pw ? {6'b000000, pw_addr[18:12]} : {6'b000000, wa_q[17:11]};   // row = addr[18:12] (7 bits), the rest 0
             if (pw || need_read_q || (ref_debt != 4'd0) || (want_hint_r && hint_ok)) begin
                 if (pw) begin                                           // 1) write
                     cmd(CMD_ACTIVE);
-                    sd_ba <= pw_addr[11:10];
-                    sd_a <= {6'b000000, pw_addr[18:12]};                // row = addr[18:12] (7 bits), the rest 0
                     acc_wr <= 1'b1; acc_hint <= 1'b0; acc_wa <= pw_addr[18:1]; acc_data <= pw_data; acc_odd <= pw_addr[0];
                     pw <= 1'b0; wdone <= act;
                     step <= 3'd1; state <= ST_ACC;
@@ -206,16 +212,23 @@ module kg_osca_sdram #(
                 end
                 else if (need_read_q) begin                             // 2) read of the current word (registered address)
                     cmd(CMD_ACTIVE);
-                    sd_ba <= wa_q[10:9]; sd_a <= {6'b000000, wa_q[17:11]};
                     acc_wr <= 1'b0; acc_hint <= 1'b0; acc_wa <= wa_q;
                     step <= 3'd1; state <= ST_ACC;
                 end
-                else if (want_hint_r && hint_ok) begin                  // 4) read ahead (nothing else to do)
-                    cmd(CMD_ACTIVE);
+                else if (want_hint_r && hint_ok) begin                  // 4) read ahead (nothing else to do): its row first
                     sd_ba <= hint_target_q[10:9]; sd_a <= {6'b000000, hint_target_q[17:11]};
                     acc_wr <= 1'b0; acc_hint <= 1'b1; acc_hidx <= hint_victim_q; acc_wa <= hint_target_q;
-                    step <= 3'd1; state <= ST_ACC;
+                    state <= ST_HPRE;
                 end
+            end
+        end
+
+        ST_HPRE: begin                                                  // the read ahead with its row in sd_a: ACTIVE now, unless
+            if (pw || need_read_q || ref_debt >= 4'd7 || !hint_ok)       // something more urgent came (then it is chosen again later)
+                state <= ST_IDLE;
+            else begin
+                cmd(CMD_ACTIVE);
+                step <= 3'd1; state <= ST_ACC;
             end
         end
 

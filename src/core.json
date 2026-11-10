@@ -10,9 +10,12 @@
     {"filename": "roms/FLOSv614.OSF", "address": 4096}
     ],
     "boards": {
-        "go": {"build": "26111018", "bitstream": "karabas_go.bin"}
+        "go": {"build": "26111022", "bitstream": "karabas_go.bin"}
     },
     "osd": [
-    {"type": "T", "name": "Reset", "options": null, "default": 0, "hotkey": "F12"}
+    {"index": 0, "type": "T", "name": "Reset", "options": null, "default": 0, "hotkey": "F12"},
+    {"type": "-"},
+    {"index": 1, "type": "S", "name": "SD card", "options": ["Card", "Image"], "default": 0, "hotkey": "Menu+S"},
+    {"type": "F", "name": "SD image", "slot": 0, "extensions": ".img,.vhd,.hdf", "hotkey": "Menu+F5", "enable_if": {"item": "SD card", "value": "Image"}}
     ]
 }
