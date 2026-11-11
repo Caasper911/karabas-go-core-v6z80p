@@ -69,3 +69,4 @@ src/tests/out/
 !src/karabas_*.prj
 !src/karabas_*.xst
 !src/karabas_*.ut
+sdimage/

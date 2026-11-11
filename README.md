@@ -32,6 +32,10 @@ repository (`src/scripts/sch2v/`), with a small set of documented patches for th
 1. Copy `src/v6z80p.kg` to the SD card of the board, next to the other cores, and choose **V6Z80 OSCA** in the core menu.
 2. FLOS 6.14 is in the core and starts at once. For files, use an SD card formatted FAT16 (as on the V6Z80P),
    or a disk image (`.img`, `.vhd`, `.hdf`) in the OSD.
+3. A ready SD card image with the V6Z80P programs (collected from [minexew/v6z80p](https://github.com/minexew/v6z80p)) is attached to the
+   [releases](https://github.com/Caasper911/karabas-go-core-v6z80p/releases/latest) (`osca_sd.zip`, 2 GB `osca_sd.img` inside):
+   write it to an SD card, or put the `.img` on the board's SD card and select it in the OSD (SD card: Image, SD image).
+   The release also has `v6z80p.kg`.
 
 OSD:
 
