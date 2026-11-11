@@ -21,7 +21,7 @@ Status: work in progress, but in daily use on all three boards (see [What works]
 - **OSCA sound**: four DMA channels from system RAM.
 - **Memory**: the 512 KB of system RAM in the SDRAM (96 MHz controller with read-ahead for the line copper and `WAIT` for the CPU);
   video RAM and sprite RAM share the 10 ns SRAM (three accesses per 16 MHz cycle).
-- **Keyboard**: a PS/2 keyboard device fed with the scan codes of the board's MCU.
+- **Keyboard and joysticks**: a PS/2 keyboard device fed with the scan codes of the board's MCU; the two joysticks of the MCU on OSCA's joystick ports.
 - **SD card**: the board's SD card, or a **virtual SD card** on a disk image chosen in the OSD (sector cache, fast MCU transfers).
 - **OSD** of the board's MCU: reset, SD card / image selection.
 
@@ -50,16 +50,17 @@ Programs for the V6Z80P are in the [v6z80p repository](https://github.com/minexe
 
 ## What works
 Checked on the hardware (Go, Mini, Mini G):
-- FLOS 6.14, the keyboard, the OSD and the reset;
+- FLOS 6.14, the keyboard, the joysticks, the OSD and the reset;
 - the SD card and the virtual SD card on an image;
-- video and sound of FLOS programs, the *parity* demo (line copper), MOD playback, the interrupt test.
+- all the V6Z80P software at hand: the programs, demos and tests of the SD card image in the
+  [releases](https://github.com/Caasper911/karabas-go-core-v6z80p/releases/latest) (from minexew/v6z80p), among them the *parity* demo
+  (line copper), MOD playback and the interrupt test.
 
 Checked in simulation against the same core with ideal memories (frames bit-identical): chunky bitmap with the blitter,
 4 bitplanes, 16x16 tiles, line draw, sprites with flipping and heights, CPU reads of video RAM, sound DMA, the line copper.
 
-Not done: joysticks, PS/2 mouse, RTC, the second SD card, the config PIC / EEPROM of the V6Z80P
-(the core boots from a replacement boot ROM). Not tested: 640x256 and interlaced modes, 8x8 tiles, dual playfield,
-hardware scrolling. Open items: [`src/docs/OPEN_TASKS.md`](src/docs/OPEN_TASKS.md).
+Not done: PS/2 mouse, RTC, the second SD card, the config PIC / EEPROM of the V6Z80P
+(the core boots from a replacement boot ROM). Open items: [`src/docs/OPEN_TASKS.md`](src/docs/OPEN_TASKS.md).
 
 ## Building
 Needed: Xilinx ISE 14.7, a `make` / `bash` / `python3` environment (MSYS2 on Windows), and:

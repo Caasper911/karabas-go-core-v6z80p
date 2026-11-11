@@ -7,7 +7,7 @@
 **Karabas Go**, **Karabas Mini** и **Karabas Mini G** (у всех Spartan-6 `xc6slx25-ftg256-2`, SDRAM MT48LC16M16A2 по тестам NanoMig, SRAM, MCU для SD/PS2).
 **Статус (2026-11-11):** сборка ISE с T80pa (`src/karabas_<плата>.prj/.xst/.ucf/.ut`, `make` в `src/`, ветка `master`), один `v6z80p.kg`
 на три платы (go, mini, minig в `core.json`), на всех трёх проверено на железе. Работает с FLOS 6.14 (образ по умолчанию),
-клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов), звук MOD, OSD/сброс и виртуальная SD на образе
+клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов), звук MOD, джойстики, весь софт с образа SD из релиза v1.0 (программы minexew/v6z80p), OSD/сброс и виртуальная SD на образе
 (OSD «SD card» = Image, `kg_sd_emu.v`, кеш секторов, burst MCU); все ограничения тайминга выполнены
 (таблица map для каждой платы своя: `MAP_T_go = 2`, `MAP_T_mini = 2`, `MAP_T_minig = 5` в `Makefile`; запас однотактных путей `clk96` почти нулевой,
 после правок RTL может понадобиться подобрать `-t` заново — см. `docs/OPEN_TASKS.md`).
@@ -71,7 +71,7 @@ Perl-модули, а g++ пишет временные файлы в `C:\Window
   не выполняется пока FPGA просит шину/владеет ею, два слота упреждающего чтения по `linecop_pc_o` для копроцессора, `WAIT_n` для CPU в `kg_osca_soc.v`).
 - Загрузка без PIC/EEPROM: подменённый boot ROM (`roms/rom_tail.asm` → `roms/boot_rom_mcu.bin`), FLOS 5.68 кладёт в RAM по `$1000` MCU-загрузчик, пока ядро в сбросе; MCU держится в сбросе до `sd_init`.
 - Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA или HDMI, OSD (`kg_osd_overlay` на `clk32`), сброс (OSD Reset / F12,
-  кнопка платы, MCU BUSY). Не сделаны: протокол джойстиков, PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`sim/alt/kg_osca_eeprom.v` не симулировался).
+  кнопка платы, MCU BUSY). Джойстики: `JOY_L`/`JOY_R` MCU → `joy_bits` (порты 0/1 OSCA), на плате проверены. Не сделаны: PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`sim/alt/kg_osca_eeprom.v` не симулировался).
 - Виртуальная SD (`rtl/io/kg_sd_emu.v`, логика карты из `nextor_sd.v` karabas-go-core-msx): SPI-слейв на выводах SD ядра, секторы через `img_sdc`
   (file mounter MCU, слот 0, OSD «SD image»). Ncr = 2 (FLOS пропускает первый байт после команды); пока карта ждёт MCU (5–40 мс на сектор), CPU получает
   WAIT на `IN $0A` (FLOS ждёт токен данных всего 8000 опросов), но не при поднятом BUSRQ (иначе видеоядро не получает шину: мигание, зависания).
