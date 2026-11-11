@@ -5,7 +5,7 @@
 ## Цель и статус
 Портировать ядро OSCA (github.com/minexew/v6z80p, `OSCA/v6z80p_plus_v1.1`, проект `osca676p`, исходники в виде схем ISE) на платы
 **Karabas Go**, **Karabas Mini** и **Karabas Mini G** (у всех Spartan-6 `xc6slx25-ftg256-2`, SDRAM MT48LC16M16A2 по тестам NanoMig, SRAM, MCU для SD/PS2).
-**Статус (2026-11-11):** сборка ISE с T80pa (`src/karabas_<плата>.prj/.xst/.ucf/.ut`, `make` в `src/`, ветка `board/t80pa-pll`), один `v6z80p.kg`
+**Статус (2026-11-11):** сборка ISE с T80pa (`src/karabas_<плата>.prj/.xst/.ucf/.ut`, `make` в `src/`, ветка `master`), один `v6z80p.kg`
 на три платы (go, mini, minig в `core.json`), на всех трёх проверено на железе. Работает с FLOS 6.14 (образ по умолчанию),
 клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов), звук MOD, OSD/сброс и виртуальная SD на образе
 (OSD «SD card» = Image, `kg_sd_emu.v`, кеш секторов, burst MCU); все ограничения тайминга выполнены
@@ -14,12 +14,14 @@
 Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `sim/scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 
-## Ветки
-- `board/t80pa-pll` — версия, работающая на плате (T80pa, `clk16` и `clk96` из одного PLL, обёртка памяти и SDRAM с регистрами на границах доменов).
-- `master` — последняя полностью проверенная версия: системная RAM на SDRAM (7-тактовый доступ, неинвертированный `SDR_CLK`), все регрессии проходят.
+## Ветки и GitHub
+Репозиторий: github.com/Caasper911/karabas-go-core-v6z80p (приватный, `origin`, ветка по умолчанию `master`).
+- `master` — рабочая версия, проверенная на платах (T80pa, все такты из одного PLL, обёртка памяти и SDRAM с регистрами на границах доменов).
+  2026-11-11 в неё влита `board/t80pa-pll` (fast-forward); до этого `master` была версией только для симуляции (`2deee4e`).
+- `board/t80pa-pll` — указывает туда же, что `master`; новую работу вести в `master` (или в ветке от неё).
 - `wip/sdram-iob-timing` — правки для физического тайминга SDRAM (инвертированный `SDR_CLK`, регистры в IOB, захват данных в IOB-регистр,
-  модель SDRAM с реальными задержками). **В ней известная регрессия**: звуковой DMA с копроцессором даёт несколько неверных чтений
-  (см. `docs/OPEN_TASKS.md`). В `master` не вливать, пока `make regress` не пройдёт на этой ветке целиком.
+  модель SDRAM с реальными задержками), ответвлена от старой `master`. **В ней известная регрессия**: звуковой DMA с копроцессором даёт несколько
+  неверных чтений (см. `docs/OPEN_TASKS.md`). В `master` не вливать, пока `make regress` не пройдёт на этой ветке целиком.
 
 ## Структура
 В корне только `modules/` (клон karabas-go-modules, в .gitignore), `src/`, `CLAUDE.md` и `README.md`. В `src/`: `rtl/` (верхние модули плат `karabas_go_osca_top.v`, `karabas_mini_osca_top.v`, `karabas_minig_osca_top.v` в корне — только выводы,
@@ -81,7 +83,7 @@ Perl-модули, а g++ пишет временные файлы в `C:\Window
   boot ROM подставляется переменной `OSCA_ROM_BIN=roms/boot_rom_mcu.bin`). Сгенерированные файлы лежат в репозитории, обычно регенерировать не нужно.
 
 ## Что проверено (симуляция) и как
-Последний прогон `make regress` на `master`: 11 из 11 тестов пройдено (flos, sprites, audio, lc_audio, lc_only, chunky_blit, planar4, tiles16, linedraw, sprites2, cpu_vram).
+Последний прогон `make regress` на старой `master` (`2deee4e`, до слияния с `board/t80pa-pll`; на текущей не запускался): 11 из 11 тестов пройдено (flos, sprites, audio, lc_audio, lc_only, chunky_blit, planar4, tiles16, linedraw, sprites2, cpu_vram).
 Эталон = то же ядро с идеальными асинхронными памятями (`sim/ref_overrides/`, `make ref`); кадры эталона — `sim/golden/*.png`.
 - FLOS (баннер на 950 мс), спрайты (48 штук), копроцессор (список из 417 слов, 50 цветовых полос), 5 режимов (chunky+блиттер, планарный
   4 плоскости, тайлы 16×16, линейный рисовальщик, спрайты с отражением/высотами/движением), чтение VRAM процессором: кадры побитово совпадают.
