@@ -15,7 +15,7 @@
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 
 ## Ветки и GitHub
-Репозиторий: github.com/Caasper911/karabas-go-core-v6z80p (приватный, `origin`, ветка по умолчанию `master`).
+Репозиторий: github.com/Caasper911/karabas-go-core-v6z80p (`origin`, ветка по умолчанию `master`).
 - `master` — рабочая версия, проверенная на платах (T80pa, все такты из одного PLL, обёртка памяти и SDRAM с регистрами на границах доменов).
   2026-11-11 в неё влита `board/t80pa-pll` (fast-forward); до этого `master` была версией только для симуляции (`8345dff`).
 - `board/t80pa-pll` удалена (2026-11-11, целиком в `master`).
@@ -32,7 +32,7 @@
 Все пути ниже — относительно `src/`; команды `make` запускать из `src/`.
 
 ## Как запускать (нужны: ISE 14.7, MSYS2 (make, bash, python3 + numpy + pillow), verilator ≥ 5 с `--binary --timing`, iverilog, sjasmplus;
-## karabas-go-tools рядом с репозиторием: `C:\hobby\karabas-go-tools`)
+## karabas-go-tools рядом с репозиторием: `../karabas-go-tools`; sjasmplus из `PATH` или в переменной `SJASM`)
 Сборка как у ядер Andy Karpov (karabas-go-core-tsconf): всё из `src/`, команды `make` в оболочке MSYS2.
 ```
 make                 # все платы: karabas_<плата>.prj/.xst/.ucf/.ut -> karabas_<плата>.bin -> v6z80p.kg (make_core.py по core.json)

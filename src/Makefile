@@ -41,12 +41,8 @@ endif
 # make_core.py of https://github.com/andykarpov/karabas-go-tools (cloned next to this repo)
 MAKE_CORE ?= ../../karabas-go-tools/make_core/make_core.py
 PYTHON ?= python3
-# the assembler of the test programs (make tests)
-ifeq ($(OS),Windows_NT)
-SJASM ?= C:/hobby/tools/sjasmplus/sjasmplus.exe
-else
+# the assembler of the test programs (make tests): sjasmplus from PATH, or SJASM=<path> in the environment / on the command line
 SJASM ?= sjasmplus
-endif
 
 KG = v6z80p.kg
 JSON = core.json

@@ -145,3 +145,7 @@ modules/               karabas-go-modules (git submodule)
 - T80 Z80 core: Daniel Wallner and contributors. HDMI transmitter (zhdmi) from karabas-go-modules.
 - The SDRAM controller is based on `fastram_sdram.v` of karabas-go-core-nanomig; the SD card logic of the virtual SD on
   `nextor_sd.v` of karabas-go-core-msx.
+
+## License
+Mixed, see [`LICENSE`](LICENSE): OSCA, FLOS and the V6Z80P software (and the core files built from them) are Phil Ruston's and
+free for non-profit, non-commercial use only; T80 / tv80 keep their own licenses; the rest of this repository is MIT.

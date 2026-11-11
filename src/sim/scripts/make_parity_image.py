@@ -15,7 +15,7 @@ import argparse, os, re, subprocess, sys
 ap = argparse.ArgumentParser()
 ap.add_argument('v6z80p')
 ap.add_argument('out')
-ap.add_argument('--sjasm', default='/c/hobby/tools/sjasmplus/sjasmplus')
+ap.add_argument('--sjasm', default=os.environ.get('SJASM', 'sjasmplus'))
 ap.add_argument('--work', default='build/parity_sim')
 ap.add_argument('--fast', action='store_true', help='skip the slow intro of the demo (see below)')
 a = ap.parse_args()

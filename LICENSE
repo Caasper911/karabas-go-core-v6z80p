@@ -1,0 +1,50 @@
+This repository contains code under different terms. Each part keeps the terms of its authors.
+
+1. OSCA, FLOS and the V6Z80P software - Phil Ruston
+   ------------------------------------------------
+   The OSCA FPGA architecture, the FLOS operating system and the V6Z80P software are copyright (c) Phil Ruston
+   2008-2012 (https://github.com/minexew/v6z80p, "Documentation/Credits & Disclaimers.txt"):
+
+     "The V6Z80P PCB design, OSCA FPGA architecture, FLOS operating system and software supplied remain the
+      copyright of Phil Ruston 2008-2012, but can be modified if desired and used freely for non-profit,
+      non-commercial applications."
+
+   This covers in this repository:
+   - src/rtl/soc/osca_core.v, src/sim/ref_overrides/osca_core.v, src/rtl/prims/ and the other Verilog generated
+     from the OSCA schematics (src/scripts/sch2v/), including their modified versions;
+   - src/roms/FLOSv614.OSF and src/roms/boot_rom_mcu.bin (the OSCA boot ROM with a replaced tail);
+   - the parts of the V6Z80P software used by the tests and the simulation images;
+   - the SD card image attached to the releases (the programs, demos, tunes and pictures in it remain the
+     property of their authors).
+   These parts, and the bitstreams and core files (*.bin, *.kg) built from them, may be used for non-profit,
+   non-commercial purposes only.
+
+2. T80 / T80pa (src/rtl/cpu/t80/, src/rtl/cpu/t80pa/) and tv80 (src/sim/tv80/)
+   ----------------------------------------------------------------------------
+   Copyright (c) 2001-2002 Daniel Wallner and the other authors named in the files; tv80 by Guy Hutchison.
+   Distributed under the license in the header of each file, which must be kept.
+
+3. karabas-go-modules (modules/, a git submodule)
+   ----------------------------------------------
+   Andy Karpov and contributors: the terms of that repository.
+
+4. Everything else - MIT License
+   -----------------------------
+   All other files of this repository (the Karabas board tops and kg_* modules, the memory and SDRAM wrappers,
+   the virtual SD card, the build files, scripts, testbenches, test programs and documentation):
+
+   Copyright (c) 2026 Caasper911
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+   documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+   the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and
+   to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all copies or substantial portions
+   of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+   THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+   CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
