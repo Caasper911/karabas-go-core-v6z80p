@@ -1,9 +1,8 @@
-# Command line build of the OSCA (V6Z80P+) core for Karabas Go and Mini with ISE 14.7, the way the cores of Andy Karpov are built
+# Command line build of the OSCA (V6Z80P+) core for Karabas Go, Mini and Mini G with ISE 14.7, the way the cores of Andy Karpov are built
 # (karabas-go-core-tsconf/src/Makefile): sources -> karabas_<board>.bin -> v6z80p.kg (make_core.py of karabas-go-tools).
-# Mini G: not yet.
 #
 #   make                 all the boards (v6z80p.kg)
-#   make go|mini         one board: synthesis, implementation, bitstream, its part of v6z80p.kg
+#   make go|mini|minig   one board: synthesis, implementation, bitstream, its part of v6z80p.kg
 #   make mini-xst        one step: <board>-xst (.ngc), <board>-impl (.bin), <board>-core (.kg)
 #   make mini-report     LUTs, slices, block RAMs and the timing result of the last build
 #   make clean           the intermediate files of ISE (not the .bin / .kg)
@@ -22,7 +21,7 @@
 # map sometimes stops silently in "Global Placement" (no .ncd): run make again.
 
 PART = xc6slx25-ftg256-2
-BOARDS = go mini
+BOARDS = go mini minig
 
 SHELL = /bin/bash
 .SHELLFLAGS = -e -o pipefail -c
@@ -54,10 +53,12 @@ JSON = core.json
 # the "build" of core.json is set to the date and hour of the build (YYMMDDHH) when the core file is made
 BUILD_DATE := $(shell date +%y%m%d%H)
 
-# map / par options: the cost table (map -t, the placement seed) 2 meets all the constraints (the one-tick paths into the
-# SRAM / SDRAM IOB registers are close: see docs/OPEN_TASKS.md)
-MAP_T_go = 3
+# map / par options.  The cost table (map -t, the placement seed) per board is one that met all the constraints in the last build of
+# that board: several one-tick paths of clk96 have almost no slack (CPU bus -> palette write capture, -> SDRAM write capture), and which
+# of them fails depends on the placement (see docs/OPEN_TASKS.md).  After a change of the sources try the next values if a board fails.
+MAP_T_go = 2
 MAP_T_mini = 2
+MAP_T_minig = 5
 MAP_OPT = -logic_opt on -ol high -xe n -register_duplication on -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off
 PAR_OPT = -ol high -xe n -mt 4
 

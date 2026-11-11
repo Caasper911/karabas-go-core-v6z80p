@@ -9,7 +9,9 @@
 // The SRAM, SDRAM, SD and MCU pins are the same on Karabas Go, Mini and Mini G.  The instance of this module in the tops is "osca":
 // the timing constraints of the .ucf files name its parts as osca/...
 //////////////////////////////////////////////////////////////////////////////////
-module kg_osca_system (
+module kg_osca_system #(
+    parameter MCU_BURST_MAX_MHZ = 0      // kg_mcu BURST_MAX_MHZ: 0 = bursts at the link clock (MCU_SCK on local routing); 32 with MCU_SCK on a global buffer (Mini G)
+) (
     input  wire        CLK_50MHZ,
     // SRAM
     output wire [20:0] MA,
@@ -116,7 +118,7 @@ module kg_osca_system (
     // the file mounter (ENABLE_IMG): slot 0 = the image of the emulated SD card (kg_sd_emu, OSD item "SD image")
     wire [7:0]  img_mounted, img_data, img_result;  wire [63:0] img_size;  wire img_data_wr, img_result_wr, img_q_wr, img_q_ack;
     wire [8:0]  img_data_addr;  wire [15:0] img_sum;  wire [23:0] img_q_di;
-    kg_mcu #(.ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0), .ENABLE_IMG(1)) u_mcu (
+    kg_mcu #(.BURST_MAX_MHZ(MCU_BURST_MAX_MHZ), .ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0), .ENABLE_IMG(1)) u_mcu (
         .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever & chk_done),   // the loader starts after the SDRAM initialisation (and the calibration with KG_SDRAM_CAL): the image is written with the final settings
         .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
         .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(mcu_burst_cs_n), .MCU_BURST_READY(mcu_burst_ready),

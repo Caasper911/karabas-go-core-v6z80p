@@ -244,6 +244,11 @@ INST "osca/soc/cpu/wr_d*" TNM = "GRP_T80D";
 TIMESPEC "TS_t80core_c16" = FROM "GRP_T80"  TO "TNM_c16" 52.0 ns;
 TIMESPEC "TS_t80bus_c16"  = FROM "GRP_T80W" TO "TNM_c16" 20.8 ns;
 TIMESPEC "TS_t80dly_c16"  = FROM "GRP_T80D" TO "TNM_c16" 31.2 ns;
+# The delayed MREQ# / IORQ# copies (GRP_T80D) reach the T80 core only through the data bus decode -> the opcode path (DInst -> IR; the
+# T80 takes no other register from the bus into the core).  Measured (T80pa model, tb_boot IRPH: FLOS, line copper + audio DMA, CPU video
+# reads, sprites; 3.4 million IR loads with interrupts, SDRAM WAITs and bus requests): an IR load comes 7 or 13 ticks after a change of
+# mq_d2 / iq_d2, never sooner.  It was a one-tick path for ISE (no constraint), failing by 0.1-0.4 ns on the Mini / Mini G.
+TIMESPEC "TS_t80d_core"   = FROM "GRP_T80D" TO "GRP_T80" 31.2 ns;
 
 # kg_osca_mem: these registers are loaded only at tick 3 (slot B) and tick 5 (slot C), from inputs that change at ticks 0, 1 or 3 (measured,
 # see kg_osca_mem.v): at least 2 ticks.  The SRAM address (ma) is also loaded at tick 1 with the display fetch address (one tick after the

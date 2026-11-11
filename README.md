@@ -1,10 +1,24 @@
-# OSCA (V6Z80P+ v1.1, osca676p) -> Karabas Go   (status: work in progress)
+# OSCA (V6Z80P+ v1.1, osca676p) -> Karabas Go, Mini and Mini G   (status: work in progress)
 
-Layout: `src/` holds the design (the build inputs `karabas_go.prj/.xst/.ucf/.ut`, `core.json` and the `Makefile`: `make` -> `v6z80p.kg`; `rtl/`: the top `karabas_go_osca_top.v` at its root, the rest in `soc/ cpu/ memory/ video/ sound/ io/ debug/ prims/` - RTL file names below without a path are in that tree; `docs/`, Z80 test programs in `tests/`, `roms/*.bin` and the boot ROM source `roms/rom_tail.asm`), `src/sim/` everything for the simulation
+Layout: `src/` holds the design (the build inputs `karabas_{go,mini,minig}.prj/.xst/.ucf/.ut`, `core.json` and the `Makefile`: `make` -> `v6z80p.kg` for all three boards; `rtl/`: the board tops `karabas_{go,mini,minig}_osca_top.v` at its root, the rest in `soc/ cpu/ memory/ video/ sound/ io/ debug/ prims/` - RTL file names below without a path are in that tree; `docs/`, Z80 test programs in `tests/`, `roms/*.bin` and the boot ROM source `roms/rom_tail.asm`), `src/sim/` everything for the simulation
 (testbenches, models, reference overrides, golden frames, `roms/*.hex`, scripts, builds); `modules/` (a clone of karabas-go-modules, not in git)
 sits next to `src/`.  File names and paths below are relative to `src/`.
 
-All results are from simulation (iverilog / Verilator / yosys). Nothing was built with ISE or run on hardware.
+The sections below on the simulation were written before the ISE builds; the current state on the hardware is in "Boards".
+
+## Boards (built with ISE 14.7, run on the hardware: FLOS 6.14, keyboard, OSD, reset, SD card and SD image, sound)
+`make` builds `karabas_go.bin`, `karabas_mini.bin`, `karabas_minig.bin` and packs them into one `v6z80p.kg` (`core.json`); `make go|mini|minig` builds one board,
+`make <board>-report` prints the resources and the timing result.  The shared part is `soc/kg_osca_system.v` (one PLL: clk96, clk16, clk32, clk8; MCU link,
+reset, SoC, OSD, virtual SD card); the tops only map pins and add the video and audio outputs of the board:
+- **Go** (`karabas_go_osca_top.v`): VGA (registered on clk32, `V_CLK` by ODDR2), PCM5102 DAC; MCU bursts on N9 / M11.
+- **Mini** (`karabas_mini_osca_top.v`): HDMI (zhdmi `hdmi_tx`, pixel clock clk32 = each OSCA pixel twice, 5x serial clock from `kg_dcm`, DE = OSCA's display
+  enable `rgb_oe` registered on clk16, 48 kHz HDMI audio, DVI only when the MCU says so), sigma-delta audio on AUDIO_L / AUDIO_R, the FT812 gets only its
+  8 MHz clock; MCU bursts on `MCU_IO[1:0]`; `MCU_SCK` is not on a clock pin.
+- **Mini G** (`karabas_minig_osca_top.v`): HDMI as on the Mini, PCM5102 DAC, `MCU_SCK` on the clock pin C9 through a BUFG, so the MCU bursts run up to 32 MHz.
+- UCF: the names inside the shared module carry the `osca/` prefix; a port net that the top also uses takes the top's name (`clk16` on Go and Mini G).
+- All timing constraints are met.  The single-cycle clk96 paths have almost no slack and the one that fails depends on the placement, so the map cost table is
+  chosen per board (`MAP_T_<board>` in the `Makefile`).  Multicycle constraints are written only from measured phases (`TS_t80d_core`: the T80 instruction
+  register loads 7 or 13 clk96 ticks after a change of the delayed MREQ# / IORQ#, `IRPH` in `sim/tb_boot.sv`).  Open items: `docs/OPEN_TASKS.md`.
 
 ## Verified in simulation (bit-exact against the same core with ideal zero-delay asynchronous memories)
 - Schematic-entry project -> Verilog (`scripts/sch2v/`: `sch2v.py`, `gen_prims.py`, `patch_osca_top.py`): no tri-states, no driver conflicts, reversed

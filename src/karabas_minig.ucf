@@ -1,0 +1,397 @@
+# karabas_minig.ucf - OSCA on Karabas Mini rev. G: the pins of the Mini G (karabas-go-core-msx karabas_minig.ucf) and the timing
+# constraints of karabas_go.ucf (kg_osca_system is the same; keep the files in step below the pins).
+VCCAUX = 3.3;
+
+NET "CLK_50MHZ"        LOC="T8" | IOSTANDARD = LVCMOS33;
+# ---- Karabas Mini rev. G: the pins of karabas_minig_osca_top that the Go does not have (karabas-go-core-msx karabas_minig.ucf)
+NET "TAPE_OUT"         LOC="M13"   | IOSTANDARD = LVCMOS33;
+NET "DAC_DAT"          LOC="D14"   | IOSTANDARD = LVCMOS33;
+NET "DAC_BCK"          LOC="C15"   | IOSTANDARD = LVCMOS33;
+NET "DAC_WS"           LOC="C16"   | IOSTANDARD = LVCMOS33;
+NET "UART_RX"          LOC="J4"    | IOSTANDARD = LVCMOS33 | PULLUP;
+NET "UART_TX"          LOC="J6"    | IOSTANDARD = LVCMOS33 | PULLUP;
+NET "UART_CTS"         LOC="L5"    | IOSTANDARD = LVCMOS33;
+NET "WA<0>"            LOC="R7"    | IOSTANDARD = LVCMOS33; # UBUS_13
+NET "WA<1>"            LOC="P7"    | IOSTANDARD = LVCMOS33; # UBUS_15
+NET "WA<2>"            LOC="P8"    | IOSTANDARD = LVCMOS33; # UBUS_17
+NET "WCS_N<0>"         LOC="L10"   | IOSTANDARD = LVCMOS33; # UBUS_1
+NET "WCS_N<1>"         LOC="M9"    | IOSTANDARD = LVCMOS33; # UBUS_0
+NET "WRD_N"            LOC="M11"   | IOSTANDARD = LVCMOS33; # UBUS_2
+NET "WWR_N"            LOC="M10"   | IOSTANDARD = LVCMOS33; # UBUS_3
+NET "WRESET_N"         LOC="N8"    | IOSTANDARD = LVCMOS33; # UBUS_19
+NET "WD<0>"            LOC="N6"    | IOSTANDARD = LVCMOS33; # UBUS_12
+NET "WD<1>"            LOC="M5"    | IOSTANDARD = LVCMOS33; # UBUS_14
+NET "WD<2>"            LOC="N5"    | IOSTANDARD = LVCMOS33; # UBUS_18
+NET "WD<3>"            LOC="L12"   | IOSTANDARD = LVCMOS33; # UBUS_11
+NET "WD<4>"            LOC="T12"   | IOSTANDARD = LVCMOS33; # UBUS_7
+NET "WD<5>"            LOC="P11"   | IOSTANDARD = LVCMOS33; # UBUS_4 
+NET "WD<6>"            LOC="P9"    | IOSTANDARD = LVCMOS33; # UBUS_8
+NET "WD<7>"            LOC="T13"   | IOSTANDARD = LVCMOS33; # UBUS_23
+NET "WD<8>"            LOC="P6"    | IOSTANDARD = LVCMOS33; # UBUS_16
+NET "WD<9>"            LOC="M4"    | IOSTANDARD = LVCMOS33; # UBUS_20
+NET "WD<10>"           LOC="T5"    | IOSTANDARD = LVCMOS33; # UBUS_22
+NET "WD<11>"           LOC="M12"   | IOSTANDARD = LVCMOS33; # UBUS_9
+NET "WD<12>"           LOC="R12"   | IOSTANDARD = LVCMOS33; # UBUS_5
+NET "WD<13>"           LOC="N9"    | IOSTANDARD = LVCMOS33; # UBUS_6
+NET "WD<14>"           LOC="T9"    | IOSTANDARD = LVCMOS33; # UBUS_10
+NET "WD<15>"           LOC="R9"    | IOSTANDARD = LVCMOS33; # UBUS_21
+NET "ESP32_SPI_CS_N"   LOC="K5"    | IOSTANDARD = LVCMOS33; # UBUS_26
+NET "SD_DET_N"         LOC="M6"     | IOSTANDARD = LVCMOS33 | PULLUP;
+NET "FT_SPI_CS_N"      LOC="F12"    | IOSTANDARD = LVCMOS33 | PULLUP;
+NET "FT_SPI_SCK"       LOC="E11"    | IOSTANDARD = LVCMOS33;
+NET "FT_SPI_MOSI"      LOC="B15"    | IOSTANDARD = LVCMOS33;
+NET "FT_CLK_OUT"       LOC="E7"     | IOSTANDARD = LVCMOS33;
+NET "MCU_IO<0>"        LOC="G6"     | IOSTANDARD = LVCMOS33 | PULLUP; # burst cs_n: idle high while the mcu does not drive it
+NET "MCU_IO<1>"        LOC="F6"     | IOSTANDARD = LVCMOS33;
+NET "MCU_IO<2>"        LOC="F7"     | IOSTANDARD = LVCMOS33; # SD2
+NET "MCU_IO<3>"        LOC="D6"     | IOSTANDARD = LVCMOS33; # FT
+NET "MCU_IO<4>"        LOC="F5"     | IOSTANDARD = LVCMOS33;
+NET "MCU_IO<5>"        LOC="D11"    | IOSTANDARD = LVCMOS33;
+NET "TMDS_P<0>"        LOC="C13"    | IOSTANDARD = TMDS_33; # HDMI_D0P
+NET "TMDS_P<1>"        LOC="B12"    | IOSTANDARD = TMDS_33; # HDMI_D1P
+NET "TMDS_P<2>"        LOC="C11"    | IOSTANDARD = TMDS_33; # HDMI_D2P
+NET "TMDS_P<3>"        LOC="B14"    | IOSTANDARD = TMDS_33; # HDMI_CKP
+NET "TMDS_N<0>"        LOC="A13"    | IOSTANDARD = TMDS_33; # HDMI_D0N
+NET "TMDS_N<1>"        LOC="A12"    | IOSTANDARD = TMDS_33; # HDMI_D1N
+NET "TMDS_N<2>"        LOC="A11"    | IOSTANDARD = TMDS_33; # HDMI_D2N
+NET "TMDS_N<3>"        LOC="A14"    | IOSTANDARD = TMDS_33; # HDMI_CKN
+NET "ADC_CLK"          LOC="T6"     | IOSTANDARD = LVCMOS33;
+NET "ADC_BCK"          LOC="T7"     | IOSTANDARD = LVCMOS33;
+NET "ADC_LRCK"         LOC="T4"     | IOSTANDARD = LVCMOS33;
+NET "MIDI_TX"          LOC="P5"     | IOSTANDARD = LVCMOS33;
+NET "FLASH_CS_N"       LOC="T3"     | IOSTANDARD = LVCMOS33; # /CONF_CS
+NET "FLASH_DI"         LOC="T10"    | IOSTANDARD = LVCMOS33; # CONF_IO0
+NET "FLASH_SCK"        LOC="R11"    | IOSTANDARD = LVCMOS33; # CONF_CLK
+NET "FLASH_WP_N"       LOC="N12"    | IOSTANDARD = LVCMOS33; # CONF_IO2
+NET "FLASH_HOLD_N"     LOC="P12"    | IOSTANDARD = LVCMOS33; # CONF_IO3
+# ---- the pins shared with the Go
+NET "MA<0>"            LOC="L14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<1>"            LOC="L13"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<2>"            LOC="K12"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<3>"            LOC="K11"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<4>"            LOC="J14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<5>"            LOC="G14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<6>"            LOC="J13"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<7>"            LOC="H13"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<8>"            LOC="J12"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<9>"            LOC="J11"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<10>"            LOC="H11"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<11>"            LOC="F13"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<12>"            LOC="G11"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<13>"            LOC="E13"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<14>"            LOC="F16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<15>"            LOC="K14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<16>"            LOC="K15"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<17>"            LOC="K16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<18>"            LOC="L16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<19>"            LOC="G12"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MA<20>"            LOC="M14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<0>"            LOC="J16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<1>"            LOC="H16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<2>"            LOC="H15"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<3>"            LOC="H14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<4>"            LOC="F15"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<5>"            LOC="F14"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<6>"            LOC="E16"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<7>"            LOC="E15"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<8>"            LOC="T15"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<9>"            LOC="T14"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<10>"            LOC="R16"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<11>"            LOC="R15"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<12>"            LOC="P16"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<13>"            LOC="P15"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<14>"            LOC="N16"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MD<15>"            LOC="M16"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MWR_N<0>"            LOC="G16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MWR_N<1>"            LOC="R14"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MRD_N<0>"            LOC="D16"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "MRD_N<1>"            LOC="M15"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SD_CS_N"       LOC="L4"   | IOSTANDARD = LVCMOS33 | PULLUP;
+NET "SD_DI"       LOC="L7"   | IOSTANDARD = LVCMOS33;
+NET "SD_DO"       LOC="M7"   | IOSTANDARD = LVCMOS33 | PULLUP;
+NET "SD_CLK"       LOC="L8"   | IOSTANDARD = LVCMOS33;
+NET "MCU_SCK"       LOC="C9"   | IOSTANDARD = LVCMOS33;
+NET "MCU_MOSI"       LOC="B3"   | IOSTANDARD = LVCMOS33;
+NET "MCU_MISO"       LOC="B2"   | IOSTANDARD = LVCMOS33;
+NET "MCU_CS_N"       LOC="A2"   | IOSTANDARD = LVCMOS33;
+NET "CLK_50MHZ" CLOCK_DEDICATED_ROUTE = FALSE;
+NET "MCU_SCK" TNM_NET = "TG_CLK_MCU";
+# MCU link (kg_mcu): SPI mode 0 from the RP2040 at 16 MHz, bursts up to 32 MHz (BURST_MAX_MHZ 32: MCU_SCK on C9, a global buffer). MCU_SCK is
+# not related to CLK_50MHZ; kg_mcu crosses with toggle synchronisers and holds its data registers for 8 SCK periods
+# (a received byte) or from the request to the next SCK edges (a reply word): one SCK period bounds these paths
+# (as in karabas-go-core-msx / -tsconf).
+TIMESPEC "TS_CLK_MCU" = PERIOD "TG_CLK_MCU" 32 MHz;
+NET "osca/clk96" TNM_NET = "TG_CLK96";
+TIMESPEC "TS_MCU_TO_SYS" = FROM "TG_CLK_MCU" TO "TG_CLK96" 31.25 ns DATAPATHONLY;
+TIMESPEC "TS_SYS_TO_MCU" = FROM "TG_CLK96" TO "TG_CLK_MCU" 31.25 ns DATAPATHONLY;
+
+# ---- SDRAM
+NET "SDR_BA<0>"            LOC="M1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_BA<1>"            LOC="N4"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<0>"            LOC="N3"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<1>"            LOC="P2"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<2>"            LOC="P1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<3>"            LOC="P4"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<4>"            LOC="B1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<5>"            LOC="C2"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<6>"            LOC="C1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<7>"            LOC="F4"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<8>"            LOC="E4"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<9>"            LOC="D1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<10>"            LOC="N1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<11>"            LOC="D3"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_A<12>"            LOC="E3"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_CLK"            LOC="E1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQM<0>"            LOC="L3"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQM<1>"            LOC="E2"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_WE_N"            LOC="L1"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_CAS_N"            LOC="M3"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_RAS_N"            LOC="M2"    | IOSTANDARD = LVCMOS33 | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<0>"            LOC="H2"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<1>"            LOC="H1"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<2>"            LOC="H4"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<3>"            LOC="J3"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<4>"            LOC="J1"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<5>"            LOC="K3"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<6>"            LOC="K2"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<7>"            LOC="K1"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<8>"            LOC="F2"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<9>"            LOC="F1"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<10>"            LOC="F3"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<11>"            LOC="G5"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<12>"            LOC="H5"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<13>"            LOC="G3"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<14>"            LOC="G1"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+NET "SDR_DQ<15>"            LOC="H3"    | IOSTANDARD = LVCMOS33  | DRIVE = 4 | SLEW = "FAST" | NODELAY;
+
+# ---- clocks
+NET "CLK_50MHZ" TNM_NET = "CLK_50MHZ";
+TIMESPEC "TS_CLK_50MHZ" = PERIOD "CLK_50MHZ" 20 ns HIGH 50%;
+
+# ---- SRAM: registers must sit in the IOBs.  The wrapper only works while
+#      (FPGA clock-to-pad) + 10 ns SRAM tAA + (pad-to-FPGA) stays below ~20 ns, i.e. ~10 ns for both FPGA legs.
+INST "osca/soc/mem/ma*"     IOB = TRUE;
+INST "osca/soc/mem/md_o*"   IOB = TRUE;
+INST "osca/soc/mem/md_oe*"  IOB = TRUE;
+INST "osca/soc/mem/md_q*"   IOB = TRUE;
+INST "osca/soc/mem/mrd0_n*" IOB = TRUE;
+INST "osca/soc/mem/mwr0_n*" IOB = TRUE;
+# (SRAM OFFSET constraints: not written yet, see docs/OPEN_TASKS.md)
+
+# ---- clocks of the design (clk96 = DCM_CLKGEN 50 MHz * 48 / 25 through a BUFG, clk16 = the memory wrapper's divide-by-6 counter through a BUFG)
+# Check the net names in the .ngd / .syr after the first ngdbuild: if XST renamed a net, constrain the name it printed.
+# clk96 and clk16 are the two outputs of one PLL (karabas_go_osca_top.v): ISE derives both periods and their phase from TS_CLK_50MHZ through the DCM and the PLL
+
+# ---- false paths (kg_osca_soc.v: sys_rdata is kept for this).  System RAM read data reaches d_bus only while the CPU reads system RAM;
+#      the video RAM write data (core buft8 on d_bus) is used only for CPU accesses to video RAM, which are never system RAM reads.
+#      The MCU loader owns the SDRAM port only while the core is in reset.
+NET "osca/soc/sys_rdata<*>"  TPTHRU = "TH_SYSRD";
+INST "osca/soc/mem/md_o*"    TNM = "GRP_MDO";
+TIMESPEC "TS_sysrd_mdo" = FROM FFS THRU "TH_SYSRD" TO "GRP_MDO" TIG;
+INST "osca/u_mcu/u_loader/*" TNM = "GRP_LOADER";
+TIMESPEC "TS_loader_mdo" = FROM "GRP_LOADER" TO "GRP_MDO" TIG;
+# the loader changes address/data/ld_active at SPI rate (many 96 MHz clocks apart): effectively multi-cycle into the SDRAM controller
+INST "osca/soc/sdram/*"      TNM = "GRP_SDRAM";
+TIMESPEC "TS_loader_sdram" = FROM "GRP_LOADER" TO "GRP_SDRAM" TIG;
+
+
+# the SDRAM self test (kg_sdram_check) changes its address at most every 5 clocks and waits for rd_valid: multi-cycle into the SDRAM controller
+# only with KG_SDRAM_CAL (the calibration module exists then):
+# INST "osca/u_chk/*"         TNM = "GRP_CHK";
+TIMESPEC "TS_chk_sdram" = FROM "GRP_CHK" TO "GRP_SDRAM" TIG;
+# INST "osca/ld_seen" TNM = "GRP_CHK";   # static after the loader has started (set once)
+# same false paths into any register of the SRAM wrapper (the placement changes which of them is critical)
+INST "osca/soc/mem/*"        TNM = "GRP_MEM";
+TIMESPEC "TS_sysrd_mem"  = FROM FFS THRU "TH_SYSRD" TO "GRP_MEM" TIG;
+TIMESPEC "TS_loader_mem" = FROM "GRP_LOADER" TO "GRP_MEM" TIG;
+TIMESPEC "TS_chk_mem"    = FROM "GRP_CHK" TO "GRP_MEM" TIG;
+# the registered loader / self test port into the SDRAM controller changes at most every 5 clocks (self test) or far less often (MCU loader): multi-cycle
+INST "osca/ld_act_r*"  TNM = "GRP_CHK";
+INST "osca/ld_addr_r*" TNM = "GRP_CHK";
+INST "osca/ld_data_r*" TNM = "GRP_CHK";
+INST "osca/ld_wr_r*"   TNM = "GRP_CHK";
+# the loader / self test signals reach OSCA's clk16 registers only while OSCA is held in reset (static while it runs)
+TIMESPEC "TS_chk_c16" = FROM "GRP_CHK" TO "TNM_c16" TIG;
+
+# The SDRAM controller next to its pins (left edge of the die, SDR_* from top to bottom): its command / address decisions go into IOB registers,
+# a route across the die cost ~4 ns of the 10.4 ns.
+INST "osca/soc/sdram/*" AREA_GROUP = "AG_SDRAM";
+AREA_GROUP "AG_SDRAM" RANGE = CLOCKREGION_X0Y0:CLOCKREGION_X0Y3;   # the left half of the die
+
+# T80pa runs on clk96.  Its core (u0) is clock-enabled by CEN = CEN_p & ~CEN_pol, once per Z80 clock (6 ticks): core-to-core paths are multi-cycle (62.5 ns).
+# The bus registers of the wrapper (WR_n, RD_n, MREQ_n, IORQ_n, DI_Reg, Wait_s, IntCycleD_n) change at CEN_n, half a Z80 clock (3 ticks) after the core: 31.2 ns both ways.
+# CEN_pol is in no group: it gates the core's clock enable on the next tick and must meet the 10.4 ns period (an earlier constraint covered all of u_z80 with 62.5 ns).
+INST "osca/soc/cpu/u_z80/u0/*" TNM = "GRP_T80";
+INST "osca/soc/cpu/u_z80/WR_n*" TNM = "GRP_T80W";
+INST "osca/soc/cpu/u_z80/RD_n*" TNM = "GRP_T80W";
+INST "osca/soc/cpu/u_z80/MREQ_n*" TNM = "GRP_T80W";
+INST "osca/soc/cpu/u_z80/IORQ_n*" TNM = "GRP_T80W";
+INST "osca/soc/cpu/u_z80/DI_Reg*" TNM = "GRP_T80W";
+INST "osca/soc/cpu/u_z80/Wait_s*" TNM = "GRP_T80W";
+INST "osca/soc/cpu/u_z80/IntCycleD_n*" TNM = "GRP_T80W";
+TIMESPEC "TS_t80_internal" = FROM "GRP_T80" TO "GRP_T80" 62.5 ns;
+TIMESPEC "TS_t80_core2bus" = FROM "GRP_T80" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_t80_bus2core" = FROM "GRP_T80W" TO "GRP_T80" 31.2 ns;
+# From T80pa (clk96) to OSCA's registers on clk16: the phases of T80pa are fixed against clk16 (CEN_p = the tick after the clk16 rising edge,
+# CEN_n = the tick after the falling edge; kg_osca_cpu.v).  The core registers change only at CEN_p: 5 ticks before the next clk16 edge.  The bus
+# registers change at CEN_p or CEN_n: at least 2 ticks.  The delayed copies in kg_osca_cpu (mq_d*, iq_d*, wr_d*) follow 2 ticks later: at least 3 ticks.
+NET "clk16" TNM_NET = "TNM_c16";   # (a port of osca used by the top (PCM5102): the net has the name of the top)
+INST "osca/soc/cpu/mq_d*" TNM = "GRP_T80D";
+INST "osca/soc/cpu/iq_d*" TNM = "GRP_T80D";
+INST "osca/soc/cpu/wr_d*" TNM = "GRP_T80D";
+TIMESPEC "TS_t80core_c16" = FROM "GRP_T80"  TO "TNM_c16" 52.0 ns;
+TIMESPEC "TS_t80bus_c16"  = FROM "GRP_T80W" TO "TNM_c16" 20.8 ns;
+TIMESPEC "TS_t80dly_c16"  = FROM "GRP_T80D" TO "TNM_c16" 31.2 ns;
+# The delayed MREQ# / IORQ# copies (GRP_T80D) reach the T80 core only through the data bus decode -> the opcode path (DInst -> IR; the
+# T80 takes no other register from the bus into the core).  Measured (T80pa model, tb_boot IRPH: FLOS, line copper + audio DMA, CPU video
+# reads, sprites; 3.4 million IR loads with interrupts, SDRAM WAITs and bus requests): an IR load comes 7 or 13 ticks after a change of
+# mq_d2 / iq_d2, never sooner.  It was a one-tick path for ISE (no constraint), failing by 0.1-0.4 ns on the Mini / Mini G.
+TIMESPEC "TS_t80d_core"   = FROM "GRP_T80D" TO "GRP_T80" 31.2 ns;
+
+# kg_osca_mem: these registers are loaded only at tick 3 (slot B) and tick 5 (slot C), from inputs that change at ticks 0, 1 or 3 (measured,
+# see kg_osca_mem.v): at least 2 ticks.  The SRAM address (ma) is also loaded at tick 1 with the display fetch address (one tick after the
+# clk16 edge, a real one-tick path), so for ma only the sources that never feed slot A get 2 ticks: the sprite engine and the CPU.
+INST "osca/soc/mem/md_o*"   TNM = "GRP_MEMBC";
+INST "osca/soc/mem/md_oe*"  TNM = "GRP_MEMBC";
+INST "osca/soc/mem/mrd0_n*" TNM = "GRP_MEMBC";
+INST "osca/soc/mem/wr_pre*" TNM = "GRP_MEMBC";
+INST "osca/soc/mem/pend_v*" TNM = "GRP_MEMBC";
+INST "osca/soc/mem/cs_*"    TNM = "GRP_MEMBC";
+INST "osca/soc/mem/c2_*"    TNM = "GRP_MEMBC";
+INST "osca/soc/mem/ma_*"    TNM = "GRP_MEMMA";
+INST "osca/soc/core/XLXI_2849/*" TNM = "GRP_SPRENG";
+TIMESPEC "TS_c16_membc"   = FROM "TNM_c16"    TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_t80_membc"   = FROM "GRP_T80"    TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_t80w_membc"  = FROM "GRP_T80W"   TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_t80d_membc"  = FROM "GRP_T80D"   TO "GRP_MEMBC" 20.8 ns;
+TIMESPEC "TS_spr_memma"   = FROM "GRP_SPRENG" TO "GRP_MEMMA" 20.8 ns;
+TIMESPEC "TS_t80_memma"   = FROM "GRP_T80"    TO "GRP_MEMMA" 20.8 ns;
+TIMESPEC "TS_t80w_memma"  = FROM "GRP_T80W"   TO "GRP_MEMMA" 20.8 ns;
+TIMESPEC "TS_t80d_memma"  = FROM "GRP_T80D"   TO "GRP_MEMMA" 20.8 ns;
+# The maths assist table RAM (written by the CPU on clk16, read asynchronously by the CPU address): its write clock -> the CPU's
+# registers is not a real one-tick path (the CPU cannot fetch from it on the tick it writes it); the read path from the CPU address is covered above.
+INST "osca/soc/core/XLXI_3644/*" TNM = "GRP_MATHS";
+TIMESPEC "TS_maths_t80" = FROM "GRP_MATHS" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_maths_sdram" = FROM "GRP_MATHS" TO "GRP_SDRAM" 31.2 ns;   # (CPU writes carry the CPU's own data, not the table's)
+INST "osca/soc/core/pal_*" TNM = "GRP_PALPIPE";
+INST "osca/soc/core/mt_*" TNM = "GRP_PALPIPE";    # the maths unit's write capture (osca_core.v), used like the palette's: at the start of a write
+TIMESPEC "TS_maths_t80w"  = FROM "GRP_MATHS" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_maths_pal"   = FROM "GRP_MATHS" TO "GRP_PALPIPE" 31.2 ns;
+TIMESPEC "TS_maths_sound" = FROM "GRP_MATHS" TO "GRP_SOUND" 31.2 ns;   # (the sound system takes only CPU writes / its DMA bytes from the bus, never the product)
+TIMESPEC "TS_maths_linecop" = FROM "GRP_MATHS" TO "GRP_LINECOP" 31.2 ns;   # (the line copper takes the bus while the FPGA owns it: no CPU write to the maths unit then)
+TIMESPEC "TS_maths_membc" = FROM "GRP_MATHS" TO "GRP_MEMBC" 31.2 ns;   # (the product reaches the bus only on CPU reads; video RAM writes carry the writer's data)
+# PS/2 keyboard: the lines (asynchronous, kHz) and the received byte are read by the CPU through a port: no one-tick path into its registers
+INST "osca/soc/core/XLXI_3575/*" TNM = "GRP_PS2";
+INST "osca/u_kbd/*" TNM = "GRP_PS2";
+TIMESPEC "TS_ps2_t80"  = FROM "GRP_PS2" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_ps2_t80w" = FROM "GRP_PS2" TO "GRP_T80W" 31.2 ns;
+# The audio DMA address reaches the bus only while the FPGA owns it (the CPU is in BUSACK and fetches no opcode): to the T80 core (the opcode path
+# DInst -> IR) it is no one-tick path.  CPU reads of the sound registers go through DI_Reg (GRP_T80W), not covered here.
+INST "osca/soc/core/XLXI_3483/*" TNM = "GRP_SOUND";
+TIMESPEC "TS_sound_t80" = FROM "GRP_SOUND" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_sound_t80w"  = FROM "GRP_SOUND" TO "GRP_T80W" 31.2 ns;    # (the same: the DMA address is on the bus only while the CPU is in BUSACK)
+# The line copper starts after the audio DMA in the same FPGA bus window (start_linecop = XLXN_6849 & audio_dma_done): its register address
+# reaches the address decoders only while the CPU is in BUSACK, so it is no one-tick path into the CPU.
+INST "osca/soc/core/XLXI_3488/*" TNM = "GRP_LINECOP";
+TIMESPEC "TS_linecop_t80"  = FROM "GRP_LINECOP" TO "GRP_T80" 31.2 ns;
+TIMESPEC "TS_linecop_t80w" = FROM "GRP_LINECOP" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_linecop_sdwd" = FROM "GRP_LINECOP" TO "GRP_SDWD" 31.2 ns;   # (the line copper writes only video registers, never the system RAM)
+# The line copper busy flag (XLXI_22, inverted) changes on its start and on its wait commands, never on the clk16 edge that starts a write
+# (reg_wr is registered one tick after the write command is decoded): the write capture registers sample it only with the write strobe.
+INST "osca/soc/core/XLXI_3488/XLXI_22*" TNM = "GRP_LCBUSY";
+TIMESPEC "TS_lcbusy_pal" = FROM "GRP_LCBUSY" TO "GRP_PALPIPE" 31.2 ns;
+INST "osca/soc/sdram/pw_data*" TNM = "GRP_SDWD";   # SDRAM write data registers (only CPU writes use them; the DMA address path to addr_q stays one tick)
+TIMESPEC "TS_sound_sdram_wd" = FROM "GRP_SOUND" TO "GRP_SDWD" 31.2 ns;
+TIMESPEC "TS_sound_pal"      = FROM "GRP_SOUND" TO "GRP_PALPIPE" 31.2 ns;   # (palette writes carry the CPU's / line copper's data)
+# The sound system takes from the shared data bus only CPU writes to its registers (the CPU's data) and its DMA bytes (now straight from the
+# SDRAM controller): the video RAM read data (CPU reads of video RAM) never reach it.
+INST "osca/soc/mem/vram_rdata2*" TNM = "GRP_VRD2";
+TIMESPEC "TS_vrd2_sound" = FROM "GRP_VRD2" TO "GRP_SOUND" 31.2 ns;
+# the core's clocked reset changes once (leaving the reset): no one-tick path into the CPU core
+INST "osca/soc/core/XLXI_3319/Q*" TNM = "GRP_CRST";   # Q and its duplicates (-register_duplication)
+# (it changes only on scanline_tc, a few lines after reset_req: no one-tick path to anything; its duplicates feed the bus decoders)
+TIMEGRP "GRP_ALLSYNC" = FFS RAMS;
+TIMESPEC "TS_crst_all" = FROM "GRP_CRST" TO "GRP_ALLSYNC" 31.2 ns;
+# osca_core: snd_databus = audio DMA owns the bus ? sysram_rdata (the SDRAM controller's register, one-tick path, stays constrained) : snd_cpu_bus.
+# Through snd_cpu_bus the sound system takes only CPU writes to its registers: the system RAM read data on that branch is no one-tick path.
+NET "osca/soc/core/snd_cpu_bus*" TPTHRU = "TP_SNDCPU";
+TIMESPEC "TS_sdram_sndcpu" = FROM "GRP_SDRAM" THRU "TP_SNDCPU" TO "GRP_SOUND" 31.2 ns;
+# CPU writes: address and data of T80pa are valid 3 ticks before WR# falls (2 more with the delayed WR#), the controller captures after that
+TIMESPEC "TS_t80_sdwd"       = FROM "GRP_T80" TO "GRP_SDWD" 31.2 ns;
+TIMESPEC "TS_t80w_sdwd"      = FROM "GRP_T80W" TO "GRP_SDWD" 31.2 ns;   # (MREQ# / IORQ# are set in T1, before the address / data are)
+# The line copper PC changes at the end of state 2 (or of state 1 of a WAIT), i.e. when a register write ENDS, never when one starts: the write
+# capture registers (palette, maths: GRP_PALPIPE) take the bus at the start of the write.  (Its register address is loaded on the edge that starts
+# the write: that one-tick path stays constrained.)
+INST "osca/soc/core/XLXI_3488/XLXI_216*" TNM = "GRP_LCPC";
+INST "osca/soc/core/XLXI_3488/XLXI_217*" TNM = "GRP_LCPC";
+TIMESPEC "TS_lcpc_pal" = FROM "GRP_LCPC" TO "GRP_PALPIPE" 31.2 ns;
+# The SPI receive register is read with IN (through DI_Reg), never fetched as an opcode: no one-tick path into the T80 core
+INST "osca/soc/core/XLXI_2015/*" TNM = "GRP_SPI";
+TIMESPEC "TS_spi_t80" = FROM "GRP_SPI" TO "GRP_T80" 31.2 ns;
+# ... nor into DI_Reg (latched at CEN_n, 4 ticks after the clk16 edge), nor into the palette pipeline / the SDRAM write data (CPU writes carry the CPU's data)
+TIMESPEC "TS_spi_t80w"  = FROM "GRP_SPI" TO "GRP_T80W" 31.2 ns;
+TIMESPEC "TS_spi_pal"   = FROM "GRP_SPI" TO "GRP_PALPIPE" 31.2 ns;
+TIMESPEC "TS_spi_sdram" = FROM "GRP_SPI" TO "GRP_SDRAM" 31.2 ns;
+
+# Registers written by the CPU / the line copper that used to be clocked by the write strobe (osca_core.v wp_pulse; video registers, bitplane
+# bases, blitter, line draw, sprite registers): they are loaded only by wp_pulse, two ticks after the strobe has begun, from address / data /
+# selects that are stable from before the strobe (CPU) or from the cycle before (line copper): two ticks from every source except the pulse
+# registers themselves (wp_w1 / wp_w2 -> enable is a real one-tick path).
+INST "osca/soc/core/XLXI_3640/XLXI_762*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_154*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_868*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_869*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_870*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_146*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_205*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_682*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_960*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_961*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_344*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_995*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_1075*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_1076*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_881*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_882*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_861*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_878*" TNM = "GRP_WREGS";
+# (trimmed by synthesis) INST "osca/soc/core/XLXI_3640/XLXI_920*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_1078*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_911*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_912*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_1089*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_1090*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/XLXI_1091*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3640/rclr*" TNM = "GRP_WREGS";   # raster IRQ flag clear pulse
+INST "osca/soc/core/irqclr_*" TNM = "GRP_WREGS";          # timer / keyboard / mouse IRQ flag clear pulses
+INST "osca/soc/core/XLXI_2849/sprite_control_reg_ram*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2849/XLXI_895*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3336/XLXI_717*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3336/XLXI_718*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3336/XLXI_747*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3336/XLXI_858*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_3336/XLXI_868*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2378/XLXI_494*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2378/XLXI_766*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2378/XLXI_681*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2378/XLXI_791*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2378/XLXI_792*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2379/XLXI_322*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2379/XLXI_328*" TNM = "GRP_WREGS";
+INST "osca/soc/core/XLXI_2379/XLXI_327*" TNM = "GRP_WREGS";
+INST "osca/soc/core/wp_w*" TNM = "GRP_WP";
+TIMEGRP "GRP_SRC_NOWP" = FFS RAMS EXCEPT "GRP_WP";
+TIMESPEC "TS_to_wregs" = FROM "GRP_SRC_NOWP" TO "GRP_WREGS" 20.8 ns;
+
+# The sprite control register (sprite_system513 XLXI_895, vreg7bits: priority mode / options) selects the palette index of every pixel, and the
+# palette read port (DOB, clk16) takes it on each clk16 edge.  wp_pulse loads it at tick 1 (99.7%) or tick 4 (measured, T80pa model, tb_boot
+# WPPHASE): after a tick 4 load the next clk16 edge is one tick away, so this IS a one-tick path, and it was the only one failing (-0.1..-0.9 ns,
+# 6 ns of routing to the palette RAM).  What it can break: the colour of the one pixel taken on the edge right after a write of that register
+# (DOB feeds the video output only); the write is asynchronous to the display on the original board too.
+INST "osca/soc/core/XLXI_2849/XLXI_895*" TNM = "GRP_SPRCTRL";
+INST "osca/soc/core/XLXI_2620/DOB*" TNM = "GRP_PALDOB";
+INST "osca/soc/core/XLXI_2621/DOB*" TNM = "GRP_PALDOB";
+TIMESPEC "TS_sprctrl_paldob" = FROM "GRP_SPRCTRL" TO "GRP_PALDOB" 20.8 ns;
+
+# No relaxation from T80pa to the SDRAM controller / the SRAM wrapper: both look at the CPU bus on every tick of clk96 (address change detection, slot
+# capture), a path longer than one tick lets them see a half-settled address or strobe.  (TS_t80_sdram / TS_t80_mem = 31.2 ns were removed.)

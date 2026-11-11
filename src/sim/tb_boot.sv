@@ -204,6 +204,48 @@ module tb_boot;
                        col_blue_a, col_blue_b, col_blue_c, col_blue_d};
     integer nonblack = 0, shotn = 0, yellow = 0; reg want_shot = 1'b0;
 
+`ifdef KG_CPU_TV80PA
+    // IRPH: ticks of clk_mem from the last change of the delayed MREQ# / IORQ# copies of kg_osca_cpu (mq_d2, iq_d2) to each load of the
+    // T80 instruction register from the data bus (dinst -> IR: M1 T2 with WAIT released, or the prefixed M7 load): the only bus -> core path
+    // (see karabas_go.ucf, TS_t80d_core)
+    integer irph [0:15]; integer iri, ir_since = 15; reg mqd_q = 1'b1, iqd_q = 1'b1;
+    initial for (iri = 0; iri < 16; iri = iri + 1) irph[iri] = 0;
+    wire ir_load = dut.cpu.u_z80.i_tv80_core.ClkEn && dut.cpu.u_z80.i_tv80_core.tstate[2] && dut.cpu.u_z80.i_tv80_core.wait_n &&
+                   (dut.cpu.u_z80.i_tv80_core.mcycle[0] || (dut.cpu.u_z80.i_tv80_core.ISet == 2'b01 && dut.cpu.u_z80.i_tv80_core.mcycle[6]));
+    always @(posedge clk_mem) begin
+        mqd_q <= dut.cpu.mq_d2;  iqd_q <= dut.cpu.iq_d2;
+        // (values read at an edge are those of the edge before: a difference = a change at the edge before, 1 tick before this one)
+        if (mqd_q != dut.cpu.mq_d2 || iqd_q != dut.cpu.iq_d2) ir_since = 1; else if (ir_since < 15) ir_since = ir_since + 1;
+        if (ir_load) irph[ir_since] = irph[ir_since] + 1;
+    end
+    final $display("IRPH ticks 1..15 from a change of mq_d2 / iq_d2 to an IR load: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
+                   irph[1], irph[2], irph[3], irph[4], irph[5], irph[6], irph[7], irph[8], irph[9], irph[10], irph[11], irph[12], irph[13], irph[14], irph[15]);
+    // SDWPH: at each capture of a CPU write by the SDRAM controller (act && !wdone: pw_addr / pw_data load), ticks since the last change of
+    // mq_d2 / iq_d2 and since the last change of the write data / address it takes.  PALPH: at each palette write (pal_en0 | pal_en1 at edge E,
+    // the RAM takes pal_d1 / pal_a1 loaded at E-1), ticks from the last change of the bus data / palette address to that load at E-1.
+    integer sdph_d [0:15], sdph_w [0:15], palph_d [0:15], palph_a [0:15];
+    integer sdw_since = 15, wd_since = 15, pd_since = 15, pa_since = 15, pd_prev = 15, pa_prev = 15;
+    reg mqd_q2 = 1'b1, iqd_q2 = 1'b1;  reg [7:0] wd_q = 8'h00, pd_q = 8'h00; reg [18:0] wa_q = 19'd0; reg [8:0] pa_q = 9'd0;
+    initial for (iri = 0; iri < 16; iri = iri + 1) begin sdph_d[iri] = 0; sdph_w[iri] = 0; palph_d[iri] = 0; palph_a[iri] = 0; end
+    always @(posedge clk_mem) begin
+        mqd_q2 <= dut.cpu.mq_d2;  iqd_q2 <= dut.cpu.iq_d2;
+        wd_q <= dut.sdram.wdata;  wa_q <= dut.sdram.addr;  pd_q <= dut.core.cpu_databus_in[7:0];  pa_q <= dut.core.palette_wr_addr;
+        if (wd_q != dut.sdram.wdata || wa_q != dut.sdram.addr) wd_since = 1; else if (wd_since < 15) wd_since = wd_since + 1;
+        if (mqd_q2 != dut.cpu.mq_d2 || iqd_q2 != dut.cpu.iq_d2) sdw_since = 1; else if (sdw_since < 15) sdw_since = sdw_since + 1;
+        if (dut.sdram.act && !dut.sdram.wdone) begin sdph_d[sdw_since] = sdph_d[sdw_since] + 1; sdph_w[wd_since] = sdph_w[wd_since] + 1; end
+        pd_prev = pd_since;  pa_prev = pa_since;
+        if (pd_q != dut.core.cpu_databus_in[7:0]) pd_since = 1; else if (pd_since < 15) pd_since = pd_since + 1;
+        if (pa_q != dut.core.palette_wr_addr) pa_since = 1; else if (pa_since < 15) pa_since = pa_since + 1;
+        if (dut.core.pal_en0 || dut.core.pal_en1) begin palph_d[pd_prev] = palph_d[pd_prev] + 1; palph_a[pa_prev] = palph_a[pa_prev] + 1; end
+    end
+    final begin
+        $display("SDWPH d2  1..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", sdph_d[1], sdph_d[2], sdph_d[3], sdph_d[4], sdph_d[5], sdph_d[6], sdph_d[7], sdph_d[8], sdph_d[9], sdph_d[10], sdph_d[11], sdph_d[12], sdph_d[13], sdph_d[14], sdph_d[15]);
+        $display("SDWPH data 1..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", sdph_w[1], sdph_w[2], sdph_w[3], sdph_w[4], sdph_w[5], sdph_w[6], sdph_w[7], sdph_w[8], sdph_w[9], sdph_w[10], sdph_w[11], sdph_w[12], sdph_w[13], sdph_w[14], sdph_w[15]);
+        $display("PALPH data 1..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", palph_d[1], palph_d[2], palph_d[3], palph_d[4], palph_d[5], palph_d[6], palph_d[7], palph_d[8], palph_d[9], palph_d[10], palph_d[11], palph_d[12], palph_d[13], palph_d[14], palph_d[15]);
+        $display("PALPH addr 1..15: %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d", palph_a[1], palph_a[2], palph_a[3], palph_a[4], palph_a[5], palph_a[6], palph_a[7], palph_a[8], palph_a[9], palph_a[10], palph_a[11], palph_a[12], palph_a[13], palph_a[14], palph_a[15]);
+    end
+`endif
+
     // DECHK: the DE of HDMI (kg_osca_system: rgb_oe through a clk16 register) against the colours: pixels with a colour outside DE
     // (must be 0), the DE pixels of a line, the DE lines of a frame, the first DE pixel after HSYNC falls
     reg de_q = 1'b0, de_l = 1'b0;  integer de_out = 0, de_px = 0, de_line = 0, de_lines = 0, de_x0 = -1, de_hx = 0, de_frames = 0;
