@@ -58,9 +58,10 @@ Not done: joysticks, PS/2 mouse, RTC, the second SD card, the config PIC / EEPRO
 hardware scrolling. Open items: [`src/docs/OPEN_TASKS.md`](src/docs/OPEN_TASKS.md).
 
 ## Building
-Needed: Xilinx ISE 14.7, a `make` / `bash` / `python3` environment (MSYS2 on Windows), and two repositories next to this one:
-- [karabas-go-modules](https://github.com/andykarpov/karabas-go-modules) cloned as `modules/` in the root of this repository;
-- [karabas-go-tools](https://github.com/andykarpov/karabas-go-tools) next to the repository (for `make_core.py`).
+Needed: Xilinx ISE 14.7, a `make` / `bash` / `python3` environment (MSYS2 on Windows), and:
+- [karabas-go-modules](https://github.com/andykarpov/karabas-go-modules): a git submodule in `modules/`. Clone with
+  `git clone --recursive`, or run `git submodule update --init` in an existing clone;
+- [karabas-go-tools](https://github.com/andykarpov/karabas-go-tools) cloned next to this repository (for `make_core.py`).
 
 From `src/`:
 ```
@@ -90,7 +91,7 @@ src/
   scripts/             schematic to Verilog conversion, test core packing
   sim/                 testbenches, memory models, reference frames
   docs/
-modules/               karabas-go-modules (not in git)
+modules/               karabas-go-modules (git submodule)
 ```
 
 ## Credits

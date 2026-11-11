@@ -24,7 +24,7 @@
   неверных чтений (см. `docs/OPEN_TASKS.md`). В `master` не вливать, пока `make regress` не пройдёт на этой ветке целиком.
 
 ## Структура
-В корне только `modules/` (клон karabas-go-modules, в .gitignore), `src/`, `CLAUDE.md` и `README.md`. В `src/`: `rtl/` (верхние модули плат `karabas_go_osca_top.v`, `karabas_mini_osca_top.v`, `karabas_minig_osca_top.v` в корне — только выводы,
+В корне только `modules/` (сабмодуль karabas-go-modules; обновление: `git -C modules pull`, затем коммит новой ссылки), `src/`, `CLAUDE.md` и `README.md`. В `src/`: `rtl/` (верхние модули плат `karabas_go_osca_top.v`, `karabas_mini_osca_top.v`, `karabas_minig_osca_top.v` в корне — только выводы,
 видео/звук платы; общая часть (PLL, MCU, сброс, SoC, OSD, виртуальная SD) — `soc/kg_osca_system.v`, экземпляр `osca`, остальное по папкам: `soc/` (ядро OSCA `osca_core.v`, `kg_osca_soc.v`), `cpu/` (`kg_osca_cpu.v`, `t80pa/`, `t80/`), `memory/`, `video/`, `sound/`, `io/`, `debug/`, `prims/`; имена RTL-файлов в тексте без пути — из этого дерева), файлы сборки `karabas_{go,mini,minig}.prj/.xst/.ucf/.ut`, `core.json`, `Makefile` (ядро `v6z80p.kg`),
 `docs/`, `scripts/make_test_cores.py` (.kg тестов), генераторы Verilog из схем, тестовые программы Z80 `tests/` (`video/`, `linecop/`, `sound/`, `system/`; из них собираются образы и для симуляции, и для `.kg1`), `roms/` (`.bin` для платы и генерации, `rom_tail.asm` — исходник подменённого boot ROM).
 Всё для симуляции — в `src/sim/`: тестбенчи `tb_*`, модели (`kg_sysram_model.v`, `kg_tv80pa.v`, `kg_az80.v`, `tv80/`, `alt/`), эталон (`ref_overrides/`,
@@ -108,6 +108,6 @@ Perl-модули, а g++ пишет временные файлы в `C:\Window
    Если программа на плате ведёт себя не так — запускать в симуляции её саму (`sim/scripts/make_parity_image.py` как образец), а не похожий тест.
 
 ## Справочные репозитории (клонировать рядом)
-- `modules/` в корне репозитория (рядом с `src/`): https://github.com/andykarpov/karabas-go-modules (нужны 9 файлов, перечислены в `src/karabas_go.prj` как `../modules/...`; `modules/` в .gitignore)
+- `modules/` в корне репозитория (рядом с `src/`): https://github.com/andykarpov/karabas-go-modules (нужны 9 файлов, перечислены в `src/karabas_go.prj` как `../modules/...`; сабмодуль git)
 - https://github.com/minexew/v6z80p (примеры `FLOS_based_programs/Simple_examples`, `tests/Misc`, `Bootcode`, `OSCA/ROM`; FLOS568F.OSF в `Contributions/Hans/CPM/v6z80pcpm30/`)
 - https://github.com/andykarpov/karabas-go-core-nanomig (`fastram_sdram.v` — основа контроллера), `-core-next`, `-core-profi`: пины платы, Makefile и xst для ISE.

@@ -3,7 +3,6 @@
 __pycache__/
 az80/
 build/
-modules/
 
 # intermediate build files of ISE (src/Makefile)
 *.bgn
