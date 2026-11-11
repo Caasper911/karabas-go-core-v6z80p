@@ -45,6 +45,45 @@ OSD:
 | SD card: Card / Image | Menu+S | the physical SD card, or the image below |
 | SD image | Menu+F5 | the disk image of the virtual SD card |
 
+### Running demos and programs
+FLOS is a command line: type a command and press Enter. The SD card image of the release has this layout:
+
+| Folder | Contents |
+|---|---|
+| `DEMOS` | demos: `PARITY`, `BOING`, `3DWIRE`, `SPIRA`, `VBALLS2`, `PIPES`, `SELECTRO`, `PICSHOW`, `NYANMAS`; `LOOPBACK` in its own folder |
+| `GAMES` | `TETRIS`, `BOUNDER`; `BDASH` and `PONG` in their own folders |
+| `UTILS` | players and viewers (`MODPLAY`, `PT3PLAY`, `SHOWBMP`, `PCXSHOW`), editor, assembler, file manager |
+| `COMMANDS` | external FLOS commands (`HELP`, `TYPE`, `KEYMAP`, ...) |
+| `TUNES`, `PICTURES`, `WAVS` | Protracker modules, PT3 tunes, pictures, samples |
+| `DOCS` | a short `.TXT` for every command and utility |
+
+Moving around:
+```
+DIR              list the current folder
+CD DEMOS         enter a folder;  CD ..  one level up;  CD /  the root
+VOL0:            switch to the first partition (VOL1: the second, ...)
+MOUNT            re-read the card after another image was chosen in the OSD
+```
+A program is started by its name, without the `.FLX` / `.EXE` extension, from its folder or with a path.
+`COMMANDS` and `UTILS` are on the search path (set by `BOOT_RUN.SCR`), so they run from any folder:
+```
+CD /DEMOS
+PARITY
+CD /GAMES/PONG
+PONG
+MODPLAY /TUNES/PT_MODS/DESERT1.MOD
+PT3PLAY /TUNES/PT3/AYWIN.PT3
+SHOWBMP /PICTURES/PIC_01.BMP
+TYPE /DOCS/MODPLAY.TXT
+HELP
+```
+Tips:
+- Numbers in FLOS are hexadecimal; a command line holds at most 40 characters, so use `CD` instead of long paths.
+- The keymap is UK by default: `KEYMAP US` (or `DE`, `IT`, `PT`) switches it.
+- F12 (OSD Reset) restarts FLOS from any program.
+- The Spectrum emulators of the V6Z80P (`SPECTRUM`, `BIN`, `SYS`; commands `BOOT`, `EMU`) and the EEPROM / firmware tools
+  (`EEPROM`, `FIRMWARE`) load other FPGA configurations from the EEPROM of the V6Z80P, which this core does not have: they do not work here.
+
 Programs for the V6Z80P are in the [v6z80p repository](https://github.com/minexew/v6z80p)
 (`FLOS_based_programs/`, demos, tests).
 
