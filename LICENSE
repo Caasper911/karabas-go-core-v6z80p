@@ -33,7 +33,7 @@ This repository contains code under different terms. Each part keeps the terms o
    All other files of this repository (the Karabas board tops and kg_* modules, the memory and SDRAM wrappers,
    the virtual SD card, the build files, scripts, testbenches, test programs and documentation):
 
-   Copyright (c) 2026 Caasper911
+   Copyright (c) 2026 the contributors of karabas-go-core-v6z80p
 
    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
    documentation files (the "Software"), to deal in the Software without restriction, including without limitation
