@@ -11,9 +11,9 @@
 (OSD «SD card» = Image, `kg_sd_emu.v`, кеш секторов); все ограничения тайминга выполнены
 (таблица map для каждой платы своя: `MAP_T_go = 11`, `MAP_T_mini = 2`, `MAP_T_minig = 5` в `Makefile`; запас однотактных путей `clk96` почти нулевой,
 после правок RTL может понадобиться подобрать `-t` заново — см. `docs/OPEN_TASKS.md`).
-**MCU link v2 (2026-11-14, ветка `link-v2`):** `kg_mcu2` вместо `kg_mcu` (растровое OSD `kg_l2_osd_overlay`, file mounter `kg_l2_img`,
-загрузка FLOS по `LD_*` kind 0), `"link": 2` в `core.json`, нужна прошивка 26111315+; собрано на трёх платах, на железе ещё не проверено
-(всё перечисленное выше проверялось с link v1). Гайд — `modules/docs/link_v2_migration.md`, протокол — karabas-go-firmware `docs/link_v2.md`.
+**MCU link v2 (2026-11-14, в `master`):** `kg_mcu2` вместо `kg_mcu` (растровое OSD `kg_l2_osd_overlay`, file mounter `kg_l2_img`,
+загрузка FLOS по `LD_*` kind 0), `"link": 2` в `core.json`, нужна прошивка 26111315+; собрано на трёх платах,
+на железе проверено (2026-11-14, всё перечисленное выше работает). Гайд — `modules/docs/link_v2_migration.md`, протокол — karabas-go-firmware `docs/link_v2.md`.
 Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `sim/scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 

@@ -98,8 +98,7 @@ Checked on the hardware (Go, Mini, Mini G):
   [releases](https://github.com/Caasper911/karabas-go-core-v6z80p/releases/latest) (from minexew/v6z80p), among them the *parity* demo
   (line copper), MOD playback and the interrupt test.
 
-These checks were made with MCU link v1. The move to link v2 (2026-11-14: `kg_mcu2`, the bitmap OSD, the file mounter of link v2) is
-built for the three boards but not yet checked on the hardware.
+These checks were repeated with MCU link v2 (2026-11-14: `kg_mcu2`, the bitmap OSD, the file mounter of link v2).
 
 Checked in simulation against the same core with ideal memories (frames bit-identical): chunky bitmap with the blitter,
 4 bitplanes, 16x16 tiles, line draw, sprites with flipping and heights, CPU reads of video RAM, sound DMA, the line copper.
