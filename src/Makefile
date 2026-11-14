@@ -52,7 +52,7 @@ BUILD_DATE := $(shell date +%y%m%d%H)
 # map / par options.  The cost table (map -t, the placement seed) per board is one that met all the constraints in the last build of
 # that board: several one-tick paths of clk96 have almost no slack (CPU bus -> palette write capture, -> SDRAM write capture), and which
 # of them fails depends on the placement (see docs/OPEN_TASKS.md).  After a change of the sources try the next values if a board fails.
-MAP_T_go = 2
+MAP_T_go = 11
 MAP_T_mini = 2
 MAP_T_minig = 5
 MAP_OPT = -logic_opt on -ol high -xe n -register_duplication on -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off

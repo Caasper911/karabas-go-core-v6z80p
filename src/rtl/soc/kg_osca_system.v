@@ -2,16 +2,14 @@
 //////////////////////////////////////////////////////////////////////////////////
 // kg_osca_system - OSCA (V6Z80P+ v1.1, converted schematics) with what every Karabas board around it has: the clocks
 // (DCM_CLKGEN + one PLL: 96, 16, 32 MHz), the SoC (core, soft Z80, SRAM wrapper, SDRAM system RAM), the MCU link (USB keyboard
-// as a PS/2 device, joysticks, the ROM loader of FLOS, OSD switches and reset, the file mounter), the SD card (the card in the slot
+// as a PS/2 device, joysticks, the ROM loader of FLOS, OSD switches and reset, the file mounter: kg_mcu2, MCU link v2), the SD card (the card in the slot
 // or the emulated card on an image, kg_sd_emu), the OSD overlay.  The board tops (karabas_<board>_osca_top.v) put the video
-// (vid_*, clk32 domain) and the audio (pcm_*, clk16 domain) out on their DAC / HDMI and wire the burst lines of the MCU.
+// (vid_*, clk32 domain) and the audio (pcm_*, clk16 domain) out on their DAC / HDMI and put MCU_INT out on the IO1 line of the MCU.
 //
 // The SRAM, SDRAM, SD and MCU pins are the same on Karabas Go, Mini and Mini G.  The instance of this module in the tops is "osca":
 // the timing constraints of the .ucf files name its parts as osca/...
 //////////////////////////////////////////////////////////////////////////////////
-module kg_osca_system #(
-    parameter MCU_BURST_MAX_MHZ = 0      // kg_mcu BURST_MAX_MHZ: 0 = bursts at the link clock (MCU_SCK on local routing); 32 with MCU_SCK on a global buffer (Mini G)
-) (
+module kg_osca_system (
     input  wire        CLK_50MHZ,
     // SRAM
     output wire [20:0] MA,
@@ -24,8 +22,7 @@ module kg_osca_system #(
     // MCU (USB keyboard / mouse / joysticks, ROM loader, OSD, file mounter)
     input  wire        MCU_MOSI, MCU_SCK, MCU_CS_N,
     output wire        MCU_MISO,
-    input  wire        mcu_burst_cs_n,        // bursts (karabas-go-firmware docs/burst_protocol.md): the pins differ per board
-    output wire        mcu_burst_ready,
+    output wire        mcu_int,               // link v2 interrupt (high active) on the IO1 line: the pin differs per board
     // SDRAM (system RAM); CS_N and CKE are tied on the boards
     output wire        SDR_CLK, SDR_RAS_N, SDR_CAS_N, SDR_WE_N,
     output wire [1:0]  SDR_BA,
@@ -36,9 +33,9 @@ module kg_osca_system #(
     output wire        clk16,
     output wire        clk32,
     output wire        clk8,                  // 8 MHz (the FT812 clock of the Mini / Mini G)
-    output wire        dvi_only,              // kg_mcu: the display takes DVI only (no HDMI audio)
+    output wire        dvi_only,              // kg_mcu2: the display takes DVI only (no HDMI audio)
     output wire        run,                   // the clocks have locked (clk16 domain)
-    // video, clk32 domain (not registered): RGB with the OSD, the syncs (low active, VGA mode: 31.5 kHz)
+    // video, clk32 domain (the registers of the OSD overlay, all 2 clocks after OSCA's): RGB with the OSD, the syncs (low active, VGA mode: 31.5 kHz)
     output wire [23:0] osd_rgb,
     output wire        mix_hs,
     output wire        mix_vs,
@@ -101,48 +98,65 @@ module kg_osca_system #(
     always @(posedge clk16) init_s <= {init_s[0], sd_init};
 
     // ---------------------------------------------------------------- MCU: USB keyboard scan codes
-    wire [7:0] kb_scancode;  wire kb_scancode_upd;
-    wire [12:0] joy_l, joy_r;            // kg_mcu: bit 0 on, 1 up, 2 down, 3 left, 4 right, 5 start, 6 a, 7 b, 8 c, 9 x, 10 y, 11 z, 12 mode
-    reg  [11:0] joy_s1 = 12'd0, joy_s2 = 12'd0;      // kg_mcu runs on clk96: two clk16 registers before the core reads them
+    wire [15:0] joy_l, joy_r;            // kg_mcu2 (bits 12..0 as kg_mcu): bit 0 on, 1 up, 2 down, 3 left, 4 right, 5 start, 6 a, 7 b, 8 c, 9 x, 10 y, 11 z, 12 mode
+    reg  [11:0] joy_s1 = 12'd0, joy_s2 = 12'd0;      // kg_mcu2 runs on clk96: two clk16 registers before the core reads them
     always @(posedge clk16) begin joy_s1 <= {joy_r[7], joy_r[6], joy_r[4], joy_r[3], joy_r[2], joy_r[1], joy_l[7], joy_l[6], joy_l[4], joy_l[3], joy_l[2], joy_l[1]}; joy_s2 <= joy_s1; end
-    wire [2:0] unused_ms_b;
     wire        rom_wr;
     wire [31:0] rom_addr;
     wire [7:0]  rom_data;
     wire sd_init;
-    wire [1:0]  hw_btn;                  // the buttons of the board (kg_mcu BTNS): [0] reset
-    wire [15:0] softsw_command, osd_command;
+    wire [5:0]  hw_btn;                  // the buttons of the board (kg_mcu2 BTNS): [0] reset ([5:2] the LED matrix: none here)
     wire        mcu_busy;
     reg  sd_init_ever = 1'b0;                      // the SDRAM may be re-initialised later by the self test: the MCU link must not be reset then
     always @(posedge clk96) if (sd_init) sd_init_ever <= 1'b1;
-    // the file mounter (ENABLE_IMG): slot 0 = the image of the emulated SD card (kg_sd_emu, OSD item "SD image")
-    wire [7:0]  img_mounted, img_data, img_result;  wire [63:0] img_size;  wire img_data_wr, img_result_wr, img_q_wr, img_q_ack;
-    wire [8:0]  img_data_addr;  wire [15:0] img_sum;  wire [23:0] img_q_di;
-    kg_mcu #(.BURST_MAX_MHZ(MCU_BURST_MAX_MHZ), .ENABLE_RTC(0), .ENABLE_UART(0), .ENABLE_MATRIX(0), .ENABLE_FILE(1), .FILE_TO_ROM(1), .ENABLE_FT(0), .ENABLE_SD2(0), .ENABLE_IMG(1)) u_mcu (
-        .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever & chk_done),   // the loader starts after the SDRAM initialisation (and the calibration with KG_SDRAM_CAL): the image is written with the final settings
-        .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SCK(MCU_SCK), .MCU_SS(MCU_CS_N),
-        .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1), .MCU_BURST_CS_N(mcu_burst_cs_n), .MCU_BURST_READY(mcu_burst_ready),
-        .MS_X(), .MS_Y(), .MS_B(unused_ms_b), .MS_Z(), .MS_UPD(),
-        .KB_STATUS(), .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
-        .KB_SCANCODE(kb_scancode), .KB_SCANCODE_UPD(kb_scancode_upd), .XT_SCANCODE(), .XT_SCANCODE_UPD(),
-        .PS2_COMMAND(16'h0000), .PS2_COMMAND_WR(1'b0),
-        .JOY_L(joy_l), .JOY_R(joy_r), .BTNS(hw_btn),
-        .SOFTSW_COMMAND(softsw_command), .OSD_COMMAND(osd_command), .BUSY(mcu_busy), .DVI_ONLY(dvi_only),
-        .RTC_A(8'h00), .RTC_DI(8'h00), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
-        .UART_RX_DATA(), .UART_RX_IDX(), .UART_TX_DATA(8'h00), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
-        .UART_DLM(8'h00), .UART_DLL(8'h00), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
-        .FT_MISO(1'b0), .SD2_MISO(1'b0), .MATRIX_CMD(24'h000000), .MATRIX_CMD_WR(1'b0),
-        .DEBUG_ADDR(16'h0000), .DEBUG_DATA(16'h0000),
-        .IMG_MOUNTED(img_mounted), .IMG_SIZE(img_size), .IMG_DATA_WR(img_data_wr), .IMG_DATA_ADDR(img_data_addr), .IMG_DATA(img_data),
-        .IMG_RESULT_WR(img_result_wr), .IMG_RESULT(img_result), .IMG_SUM(img_sum), .IMG_Q_WR(img_q_wr), .IMG_Q_DI(img_q_di), .IMG_Q_ACK(img_q_ack),
-        .FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'b00), .ESP_UART_RX_DATA(8'h00), .ESP_UART_RX_WR(1'b0),
-        .ROMLOADER_ACTIVE(romloader_active), .ROMLOAD_ADDR(rom_addr), .ROMLOAD_DATA(rom_data), .ROMLOAD_WR(rom_wr),
-        .FLASHBOOT_START(1'b0), .FLASHBOOT_COREID(5'h00), .PRN_DATA(8'h00), .PRN_WR(1'b0));
-
-    // ---------------------------------------------------------------- OSD switches (core.json "osd": the items with a value, in their order)
-    //   register 0: Reset (T, F12);  1: SD card (0 the card in the slot of the board, 1 the image of the OSD item "SD image")
+    // the file mounter (ENABLE_IMG): slot 0 = the image of the emulated SD card (kg_sd_emu, OSD item "SD image"), on the SDC_* side of kg_mcu2
+    wire        sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe, hd_rd, hd_wr;
+    wire [2:0]  sdc_slot;  wire [8:0] sdc_byte_addr;  wire [7:0] sdc_byte_in_data, hd_byte_out_data, sdc_img_mounted;
+    wire [63:0] sdc_img_size;  wire [31:0] hd_lba;
+    // the OSD switches (core.json "osd": the items with a value, in their order): switch n = softsw[n*8 +: 8]
+    //   0: Reset (T, F12);  1: SD card (0 the card in the slot of the board, 1 the image of the OSD item "SD image")
     wire [2*8-1:0] softsw;
-    kg_soft_switches #(.N(2)) u_softsw (.clk(clk96), .command(softsw_command), .regs(softsw), .upd());
+    // the bitmap OSD (kg_l2_osd, clk96) for kg_l2_osd_overlay (clk32)
+    wire        osd_wr, osd_en, osd_zoom;  wire [11:0] osd_waddr;  wire [7:0] osd_wdata;  wire [23:0] osd_fg, osd_bg;
+    wire [1:0]  osd_alpha, osd_place;  wire [4:0] osd_px, osd_ph;  wire [3:0] osd_py;  wire [5:0] osd_pw;
+    // the loads (kg_l2_load): kind 0 = the ROMs of core.json (FLOS at $1000), the only kind this core takes
+    wire [1:0]  ld_kind;  wire ld_active, ld_wr;  wire [31:0] ld_addr;  wire [7:0] ld_data;
+    // PS/2 bytes of the keyboard: PS2_WR is one clock per byte
+    wire [7:0]  ps2_code;  wire ps2_kind, ps2_wr;
+    // MCU link v2 (karabas-go-firmware docs/link_v2.md, modules docs/link_v2_migration.md).  The ROM loader writes the SDRAM directly
+    // while the core is in reset (as with v1): no LD_READY (CAPS bit 4).  kg_l2_img gives the MCU 5.6 M clocks (58 ms at 96 MHz) for a
+    // sector before it raises the request again (3 times, then an error); v1 waited 175 ms (img_sdc TIMEOUT FFFFFF).
+    kg_mcu2 #(.CAPS(16'h0000), .SW_N(2), .SW_INIT(16'h0000), .CS_FILTER(3), .ENABLE_OSD(1), .ENABLE_IMG(1), .IMG_OUT_LATENCY(3),
+              .ENABLE_PORTS(4'b0000), .ENABLE_RTC(0), .ENABLE_AUX(0), .ENABLE_FT(0), .ENABLE_SD2(0)) u_mcu (
+        .CLK(clk96), .N_RESET(dcm_locked & pll_locked & sd_init_ever & chk_done),   // the loader starts after the SDRAM initialisation (and the calibration with KG_SDRAM_CAL): the image is written with the final settings
+        .MCU_SCK(MCU_SCK), .MCU_MOSI(MCU_MOSI), .MCU_MISO(MCU_MISO), .MCU_SS(MCU_CS_N), .MCU_INT(mcu_int),
+        .MCU_SPI_FT_SS(1'b1), .MCU_SPI_SD2_SS(1'b1),
+        .SW(softsw), .SW_WR(), .SW_INDEX(), .SW_VALUE(), .HW_ID(), .DVI_ONLY(dvi_only), .CORE_BUILD(), .FW_BUILD(),
+        .BUSY(mcu_busy), .BTNS(hw_btn), .RELOAD_REQ(1'b0), .RELOAD_CORE(8'h00),
+        .FT_MISO(1'b0), .SD2_MISO(1'b0),
+        .KBD(), .KBD_WR(), .PS2_CODE(ps2_code), .PS2_KIND(ps2_kind), .PS2_WR(ps2_wr),
+        .MS_X(), .MS_Y(), .MS_Z(), .MS_B(), .MS_WR(), .JOY_L(joy_l), .JOY_R(joy_r), .JOY_WR(),
+        .PS2_CMD(16'h0000), .PS2_CMD_WR(1'b0),
+        .LD_KIND(ld_kind), .LD_SLOT(), .LD_SIZE(), .LD_START(), .LD_ACTIVE(ld_active), .LD_END(), .LD_ADDR(ld_addr), .LD_DATA(ld_data), .LD_WR(ld_wr),
+        .LD_READY(1'b1),
+        .OSD_WR(osd_wr), .OSD_WADDR(osd_waddr), .OSD_WDATA(osd_wdata), .OSD_EN(osd_en), .OSD_FG(osd_fg), .OSD_BG(osd_bg), .OSD_ALPHA(osd_alpha),
+        .OSD_PX(osd_px), .OSD_PY(osd_py), .OSD_PW(osd_pw), .OSD_PH(osd_ph), .OSD_PLACE(osd_place), .OSD_ZOOM(osd_zoom),
+        .SDC_IMG_MOUNTED(sdc_img_mounted), .SDC_IMG_SIZE(sdc_img_size),
+        .SDC_RD({7'd0, hd_rd}), .SDC_WR({7'd0, hd_wr}), .SDC_SECTOR(hd_lba),
+        .SDC_BUSY(sdc_busy), .SDC_DONE(sdc_done), .SDC_ERROR(sdc_error), .SDC_SLOT(sdc_slot),
+        .SDC_BYTE_IN_STROBE(sdc_byte_in_strobe), .SDC_BYTE_ADDR(sdc_byte_addr), .SDC_BYTE_IN_DATA(sdc_byte_in_data),
+        .SDC_BYTE_OUT_DATA(hd_byte_out_data),
+        .IMG_WP(), .IMG_PHYS_WR(), .IMG_PHYS(), .IMG_FLUSH(), .FDD_CHNG_WR(), .FDD_CHNG(), .FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'b00),
+        .BK_MOUNT(1'b0), .BK_FLUSHED(1'b0), .BK_SLOT(3'd0), .BK_SIZE(32'd0), .BK_KIND(8'h00), .BK_RESULT(8'h00),
+        .IMG_ACTIVE(),
+        .PORT_OUT_DATA(), .PORT_OUT_WR(), .PORT_OUT_READY(4'b0000), .PORT_IN_DATA(32'd0), .PORT_IN_WR(4'b0000), .PORT_CFG(128'd0),
+        .PORT_IN_FULL(), .PORT_STAT(), .PORT_STAT_WR(),
+        .RTC_A(8'h00), .RTC_DI(8'h00), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
+        .MATRIX_CMD(24'h000000), .MATRIX_CMD_WR(1'b0), .DEBUG_ADDR(16'h0000), .DEBUG_DATA(16'h0000));
+    assign romloader_active = ld_active & (ld_kind == 2'd0);
+    assign rom_wr   = ld_wr & (ld_kind == 2'd0);
+    assign rom_addr = ld_addr;
+    assign rom_data = ld_data;
     wire kb_reset = softsw[0];
     wire sd_img   = softsw[8];
     // reset of the core (as the cores of karabas-go: the OSD Reset, the reset button of the board, the MCU busy): OSCA's reset input
@@ -151,14 +165,11 @@ module kg_osca_system #(
     always @(posedge clk16) rst_req_s <= {rst_req_s[1:0], kb_reset | hw_btn[0] | mcu_busy};
     wire rst_req = rst_req_s[2];
 
-    // clk96 -> clk16 crossing of the (rare) scan code bytes: hold the byte, toggle a flag.  KB_SCANCODE_UPD of kg_mcu TOGGLES with every byte
-    // (kg_mcu_hid.v): a new byte is any change of its level.  (It was taken as a pulse: bytes were repeated while it was 1 and lost while it was 0,
-    // e.g. the break code F0 xx -> stuck keys.)
-    reg [7:0] kb_hold = 8'h00; reg kb_tog = 1'b0; reg kb_upd_d = 1'b0;
-    always @(posedge clk96) begin
-        kb_upd_d <= kb_scancode_upd;
-        if (kb_scancode_upd != kb_upd_d) begin kb_hold <= kb_scancode; kb_tog <= ~kb_tog; end
-    end
+    // clk96 -> clk16 crossing of the (rare) scan code bytes: hold the byte, toggle a flag.  PS2_WR of kg_mcu2 is one clk96 pulse per byte
+    // (set 2 only: PS2_KIND 1 is the XT form of the same keys).
+    reg [7:0] kb_hold = 8'h00; reg kb_tog = 1'b0;
+    always @(posedge clk96)
+        if (ps2_wr && !ps2_kind) begin kb_hold <= ps2_code; kb_tog <= ~kb_tog; end
     reg [2:0] kb_tog_s = 3'b000;
     always @(posedge clk16) kb_tog_s <= {kb_tog_s[1:0], kb_tog};
     wire kb_stb = kb_tog_s[2] ^ kb_tog_s[1];
@@ -373,23 +384,28 @@ module kg_osca_system #(
         .cell_ok(chk_cok), .cell_bad(chk_cbad), .err_final(chk_efin), .first_addr(dbg5[15:0]), .first_ea(dbg5[31:16]),
         .m_hs(pmask), .m_lines(p17), .m_nb(p18), .m_col({pfirst_i, pfirst[11:0]}),
         .bytes(ld_bytes), .pc_s(pc_snap), .pc_max(pc_max), .op_s(op_snap), .r(dbg_r), .g(dbg_g), .b(dbg_b), .hs(dbg_hs), .vs(dbg_vs));
-    // The OSD of the MCU (kg_osd_overlay of karabas-go-modules) is laid over the picture on a 32 MHz clock (the PLL, edges on those of clk16):
-    // each 16 MHz pixel of OSCA is two clocks.  The overlay is made for a character cell of 16 clocks (two per OSD pixel); with OSCA's
-    // line of 508 clocks of 16 MHz its 32 cells would be wider than the line, at 32 MHz (1016 clocks, H_DIV4_WIDTH above that: a counter
-    // step per 2 clocks) the menu is 256 OSCA pixels wide.  Its position: H_OFFSET in OSCA pixels from the leading edge of HSYNC,
-    // V_OFFSET in pairs of lines from that of VSYNC (the 524-line frame: a step per 2 lines), about the middle of OSCA's display window.
+    // The OSD of the MCU (kg_l2_osd_overlay of karabas-go-modules: the 256 x 128 bitmap of link v2) is laid over the picture on a 32 MHz
+    // clock (the PLL, edges on those of clk16): each 16 MHz pixel of OSCA is two clocks.  The overlay measures its area from de (OSCA's
+    // display window, rgb_oe) and centres the OSD in it: FLOS's window of 320 x 240 is 640 x 480 clocks x lines (the VGA mode doubles the
+    // lines): scale 2, 512 x 256.  It takes high active syncs; picture, syncs and DE come out of its registers 2 clocks later, together.
     wire [7:0] mix_r = show_dbg ? dbg_r  : osca_r;
     wire [7:0] mix_g = show_dbg ? dbg_g  : osca_g;
     wire [7:0] mix_b = show_dbg ? dbg_b  : osca_b;
-    assign     mix_hs = show_dbg ? dbg_hs : horizontal_sync;     // low active
-    assign     mix_vs = show_dbg ? dbg_vs : tv_sync;
+    wire       pre_hs = show_dbg ? dbg_hs : horizontal_sync;     // low active
+    wire       pre_vs = show_dbg ? dbg_vs : tv_sync;
     // DE: rgb_oe through a clk16 register, as the palette output register that clears the colours outside it (synchronous reset by ~rgb_oe)
     reg de16 = 1'b0;
     always @(posedge clk16) de16 <= rgb_oe;
-    assign vid_de = show_dbg ? 1'b1 : de16;
-    kg_osd_overlay #(.H_OFFSET(160), .V_OFFSET(27), .H_DIV4_WIDTH(2000)) u_osd (
-        .clk(clk32), .rgb_i({mix_r, mix_g, mix_b}), .rgb_o(osd_rgb),
-        .hsync_i(~mix_hs), .vsync_i(~mix_vs), .v_offset(11'd0), .osd_command(osd_command));
+    wire pre_de = show_dbg ? 1'b1 : de16;
+    wire ov_hs, ov_vs;
+    kg_l2_osd_overlay u_osd (
+        .wclk(clk96), .osd_wr(osd_wr), .osd_waddr(osd_waddr), .osd_wdata(osd_wdata), .osd_en(osd_en), .osd_fg(osd_fg), .osd_bg(osd_bg),
+        .osd_alpha(osd_alpha), .osd_px(osd_px), .osd_py(osd_py), .osd_pw(osd_pw), .osd_ph(osd_ph), .osd_place(osd_place), .osd_zoom(osd_zoom),
+        .icon_on(8'h00), .icon_act(8'h00),
+        .clk(clk32), .rgb_i({mix_r, mix_g, mix_b}), .hs_i(~pre_hs), .vs_i(~pre_vs), .de_i(pre_de),
+        .rgb_o(osd_rgb), .hs_o(ov_hs), .vs_o(ov_vs), .de_o(vid_de));
+    assign mix_hs = ~ov_hs;
+    assign mix_vs = ~ov_vs;
 
     // audio: the board's DAC gets the mixer sums of OSCA's sound system directly (4 channels, 512 = silence), not its 1-bit sigma-delta outputs converted back:
     // (sum - 512) * 32 = +-16384 (-6 dB of full scale)
@@ -405,19 +421,6 @@ module kg_osca_system #(
     // the reset of the core, for the emulated card (it starts idle again, as a card after a power cycle of the machine)
     reg [1:0] emu_rst_s = 2'b11;
     always @(posedge clk96) emu_rst_s <= {emu_rst_s[0], ~(run & ~load_s[1] & init_s[1] & ~rst_req)};
-    wire        sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe, hd_rd, hd_wr;
-    wire [2:0]  sdc_slot;  wire [8:0] sdc_byte_addr;  wire [7:0] sdc_byte_in_data, hd_byte_out_data, sdc_img_mounted;
-    wire [63:0] sdc_img_size;  wire [31:0] hd_lba;
-    // the sector interface of the file mounter: one requester (slot 0); TIMEOUT ~175 ms at 96 MHz (the MCU answers in 5-15 ms)
-    img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'hFFFFFF)) u_sdc (
-        .clk(clk96), .reset(1'b0),
-        .img_mounted(img_mounted), .img_size(img_size), .img_data_wr(img_data_wr), .img_data_addr(img_data_addr), .img_data(img_data),
-        .img_result_wr(img_result_wr), .img_result(img_result), .img_sum(img_sum), .img_q_wr(img_q_wr), .img_q_di(img_q_di), .img_q_ack(img_q_ack),
-        .sdc_img_mounted(sdc_img_mounted), .sdc_img_size(sdc_img_size),
-        .sdc_rd({7'd0, hd_rd}), .sdc_wr({7'd0, hd_wr}), .sdc_sector(hd_lba),
-        .sdc_busy(sdc_busy), .sdc_done(sdc_done), .sdc_error(sdc_error), .sdc_slot(sdc_slot),
-        .sdc_byte_in_strobe(sdc_byte_in_strobe), .sdc_byte_addr(sdc_byte_addr), .sdc_byte_in_data(sdc_byte_in_data),
-        .sdc_byte_out_data(hd_byte_out_data), .active());
     kg_sd_emu u_sdemu (
         .clk(clk96), .reset(emu_rst_s[1]),
         .sclk(sdc_clk), .mosi(sdc_din), .cs_n(sdc_cs), .miso(emu_miso),

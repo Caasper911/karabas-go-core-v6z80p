@@ -42,8 +42,8 @@ NET "FT_SPI_SCK"       LOC="E11"   | IOSTANDARD = LVCMOS33;
 NET "FT_SPI_MOSI"       LOC="B15"   | IOSTANDARD = LVCMOS33;
 NET "FT_RESET"       LOC="C15"   | IOSTANDARD = LVCMOS33;
 NET "FT_CLK_OUT"    LOC="E7"   | IOSTANDARD = LVCMOS33;
-NET "MCU_IO<0>"     LOC="G6"   | IOSTANDARD = LVCMOS33 | PULLUP; # burst cs_n: idle high while the mcu does not drive it
-NET "MCU_IO<1>"     LOC="F6"   | IOSTANDARD = LVCMOS33;
+NET "MCU_IO<0>"     LOC="G6"   | IOSTANDARD = LVCMOS33 | PULLUP; # IO0 (the burst cs_n of v1): an input, idle high
+NET "MCU_IO<1>"     LOC="F6"   | IOSTANDARD = LVCMOS33; # MCU_INT (link v2, the IO1 line)
 NET "MCU_IO<2>"     LOC="F7"   | IOSTANDARD = LVCMOS33; # SD2
 NET "MCU_IO<3>"     LOC="D6"   | IOSTANDARD = LVCMOS33; # FT
 NET "TMDS_P<0>"       LOC="C13"   | IOSTANDARD = TMDS_33; # HDMI_D0P
@@ -115,12 +115,12 @@ NET "MCU_SCK"       LOC="C3"   | IOSTANDARD = LVCMOS33;
 NET "MCU_MOSI"       LOC="B3"   | IOSTANDARD = LVCMOS33;
 NET "MCU_MISO"       LOC="B2"   | IOSTANDARD = LVCMOS33;
 NET "MCU_CS_N"       LOC="A2"   | IOSTANDARD = LVCMOS33;
-NET "MCU_SCK" CLOCK_DEDICATED_ROUTE = FALSE;  # not on a clock pin: kg_mcu clocks its SPI receiver from it
+NET "MCU_SCK" CLOCK_DEDICATED_ROUTE = FALSE;  # not on a clock pin: kg_l2_link clocks its SPI shifter from it
 NET "CLK_50MHZ" CLOCK_DEDICATED_ROUTE = FALSE;
 NET "MCU_SCK" TNM_NET = "TG_CLK_MCU";
-# MCU link (kg_mcu): SPI mode 0 from the RP2040 at 16 MHz, bursts at the link clock (BURST_MAX_MHZ 0). MCU_SCK is
-# not related to CLK_50MHZ; kg_mcu crosses with toggle synchronisers and holds its data registers for 8 SCK periods
-# (a received byte) or from the request to the next SCK edges (a reply word): one SCK period bounds these paths
+# MCU link v2 (kg_mcu2): SPI mode 0 from the RP2040 at 16 MHz (up to 32 MHz). MCU_SCK is
+# not related to CLK_50MHZ; kg_l2_link crosses with toggle synchronisers and holds its data registers for 8 SCK periods
+# (a received byte) or from the load of an answer byte to the next SCK edges: one SCK period bounds these paths
 # (as in karabas-go-core-msx / -tsconf).
 TIMESPEC "TS_CLK_MCU" = PERIOD "TG_CLK_MCU" 32 MHz;
 NET "osca/clk96" TNM_NET = "TG_CLK96";
@@ -190,7 +190,7 @@ INST "osca/soc/mem/mwr0_n*" IOB = TRUE;
 NET "osca/soc/sys_rdata<*>"  TPTHRU = "TH_SYSRD";
 INST "osca/soc/mem/md_o*"    TNM = "GRP_MDO";
 TIMESPEC "TS_sysrd_mdo" = FROM FFS THRU "TH_SYSRD" TO "GRP_MDO" TIG;
-INST "osca/u_mcu/u_loader/*" TNM = "GRP_LOADER";
+INST "osca/u_mcu/u_load/*" TNM = "GRP_LOADER";
 TIMESPEC "TS_loader_mdo" = FROM "GRP_LOADER" TO "GRP_MDO" TIG;
 # the loader changes address/data/ld_active at SPI rate (many 96 MHz clocks apart): effectively multi-cycle into the SDRAM controller
 INST "osca/soc/sdram/*"      TNM = "GRP_SDRAM";

@@ -3,7 +3,7 @@
 // karabas_go_osca_top - OSCA (V6Z80P+ v1.1, converted schematics) on Karabas Go.
 //
 // The system (clocks, SoC, MCU link, SD card, OSD) is kg_osca_system, shared with the other boards; here are the parts of
-// the Go: the VGA DAC (clocked by V_CLK), the FT812 kept off the VGA bus, the PCM5102 DAC, the burst lines of the MCU.
+// the Go: the VGA DAC (clocked by V_CLK), the FT812 kept off the VGA bus, the PCM5102 DAC, the interrupt line of MCU link v2.
 // Not done: the joystick serial protocol (serjoy2), PS/2 mouse, second SD, RTC.
 //////////////////////////////////////////////////////////////////////////////////
 module karabas_go_osca_top (
@@ -25,7 +25,7 @@ module karabas_go_osca_top (
     // MCU (USB keyboard / mouse / joysticks)
     input  wire        MCU_MOSI, MCU_SCK, MCU_CS_N,
     output wire        MCU_MISO,
-    inout  wire [1:0]  MCU_SPI_IO,        // bursts (karabas-go-firmware docs/burst_protocol.md): [0] READY (N9), [1] burst CS_N (M11)
+    inout  wire [1:0]  MCU_SPI_IO,        // MCU link v2: [0] MCU_INT (N9, the IO1 line: the index is swapped on the Go), [1] IO0 (M11, an input)
     // SDRAM (system RAM); CS_N and CKE are tied on the board
     output wire        SDR_CLK, SDR_RAS_N, SDR_CAS_N, SDR_WE_N,
     output wire [1:0]  SDR_BA,
@@ -36,8 +36,8 @@ module karabas_go_osca_top (
     wire clk16, clk32, run;
     wire [23:0] osd_rgb;  wire mix_hs, mix_vs;
     wire [15:0] pcm_l, pcm_r;
-    wire mcu_burst_ready;                // a sector read of the file mounter comes as one burst instead of 512 frames
-    assign MCU_SPI_IO[0] = mcu_burst_ready;
+    wire mcu_int;                        // MCU link v2: the interrupt line
+    assign MCU_SPI_IO[0] = mcu_int;
     assign MCU_SPI_IO[1] = 1'bz;
 
     kg_osca_system osca (
@@ -45,7 +45,7 @@ module karabas_go_osca_top (
         .MA(MA), .MD(MD), .MWR_N(MWR_N), .MRD_N(MRD_N),
         .SD_CS_N(SD_CS_N), .SD_DI(SD_DI), .SD_CLK(SD_CLK), .SD_DO(SD_DO),
         .MCU_MOSI(MCU_MOSI), .MCU_SCK(MCU_SCK), .MCU_CS_N(MCU_CS_N), .MCU_MISO(MCU_MISO),
-        .mcu_burst_cs_n(MCU_SPI_IO[1]), .mcu_burst_ready(mcu_burst_ready),
+        .mcu_int(mcu_int),
         .SDR_CLK(SDR_CLK), .SDR_RAS_N(SDR_RAS_N), .SDR_CAS_N(SDR_CAS_N), .SDR_WE_N(SDR_WE_N),
         .SDR_BA(SDR_BA), .SDR_A(SDR_A), .SDR_DQM(SDR_DQM), .SDR_DQ(SDR_DQ),
         .clk16(clk16), .clk32(clk32), .clk8(), .dvi_only(), .run(run),

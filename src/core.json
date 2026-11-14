@@ -3,6 +3,7 @@
     "name": "V6Z80 OSCA",
     "visible": true,
     "type": "osd",
+    "link": 2,
     "order": 3,
     "eeprom_bank": 0,
     "rtc_mode": 2,
@@ -10,9 +11,9 @@
     {"filename": "roms/FLOSv614.OSF", "address": 4096}
     ],
     "boards": {
-        "go": {"build": "26111108", "bitstream": "karabas_go.bin"},
-        "mini": {"build": "26111108", "bitstream": "karabas_mini.bin"},
-        "minig": {"build": "26111108", "bitstream": "karabas_minig.bin"}
+        "go": {"build": "26111413", "bitstream": "karabas_go.bin"},
+        "mini": {"build": "26111413", "bitstream": "karabas_mini.bin"},
+        "minig": {"build": "26111413", "bitstream": "karabas_minig.bin"}
     },
     "osd": [
     {"index": 0, "type": "T", "name": "Reset", "options": null, "default": 0, "hotkey": "F12"},

@@ -8,9 +8,12 @@
 **Статус (2026-11-11):** сборка ISE с T80pa (`src/karabas_<плата>.prj/.xst/.ucf/.ut`, `make` в `src/`, ветка `master`), один `v6z80p.kg`
 на три платы (go, mini, minig в `core.json`), на всех трёх проверено на железе. Работает с FLOS 6.14 (образ по умолчанию),
 клавиатура, тестовые образы, тест прерываний, демо parity (копроцессор ждёт SDRAM после переходов), звук MOD, джойстики, весь софт с образа SD из релиза v1.0 (программы minexew/v6z80p), OSD/сброс и виртуальная SD на образе
-(OSD «SD card» = Image, `kg_sd_emu.v`, кеш секторов, burst MCU); все ограничения тайминга выполнены
-(таблица map для каждой платы своя: `MAP_T_go = 2`, `MAP_T_mini = 2`, `MAP_T_minig = 5` в `Makefile`; запас однотактных путей `clk96` почти нулевой,
+(OSD «SD card» = Image, `kg_sd_emu.v`, кеш секторов); все ограничения тайминга выполнены
+(таблица map для каждой платы своя: `MAP_T_go = 11`, `MAP_T_mini = 2`, `MAP_T_minig = 5` в `Makefile`; запас однотактных путей `clk96` почти нулевой,
 после правок RTL может понадобиться подобрать `-t` заново — см. `docs/OPEN_TASKS.md`).
+**MCU link v2 (2026-11-14, ветка `link-v2`):** `kg_mcu2` вместо `kg_mcu` (растровое OSD `kg_l2_osd_overlay`, file mounter `kg_l2_img`,
+загрузка FLOS по `LD_*` kind 0), `"link": 2` в `core.json`, нужна прошивка 26111315+; собрано на трёх платах, на железе ещё не проверено
+(всё перечисленное выше проверялось с link v1). Гайд — `modules/docs/link_v2_migration.md`, протокол — karabas-go-firmware `docs/link_v2.md`.
 Открытое — `docs/OPEN_TASKS.md`, раздел «Плата». Parity в симуляции: `sim/scripts/make_parity_image.py <v6z80p> <out.hex> --fast` + сборка с `IMG_BYTES=364544`.
 Любые цифры задержек FPGA в `docs/SDRAM_TIMING.md` — мои оценки; результаты `trce` из ISE важнее их.
 
@@ -60,7 +63,8 @@ Perl-модули, а g++ пишет временные файлы в `C:\Window
 - Тактирование: один PLL (`kg_osca_system.v`, VCO 576 МГц): `clk96`, `clk16`, `clk32` (OSD, HDMI), `clk8` (FT_CLK_OUT на Mini/Mini G).
 - Платы (верхние модули): Go — VGA (`V_CLK` ODDR2) и PCM5102; Mini — HDMI (zhdmi `hdmi_tx`, пиксельный такт `clk32`, ×5 из `kg_dcm`,
   DE = `rgb_oe` ядра через регистр `clk16` (`vid_de`), звук HDMI 48 кГц, DVI по `dvi_only` MCU) и сигма-дельта на AUDIO_L/R, FT812 только такт;
-  Mini G — HDMI как Mini, PCM5102, `MCU_SCK` на тактовом выводе C9 через BUFG (burst MCU до 32 МГц, `MCU_BURST_MAX_MHZ`), burst на `MCU_IO[1:0]`.
+  Mini G — HDMI как Mini, PCM5102, `MCU_SCK` на тактовом выводе C9 через BUFG.
+  `MCU_INT` link v2 — линия IO1 (бывший READY burst): Go `MCU_SPI_IO[0]` (N9), Mini/Mini G `MCU_IO[1]` (F6); IO0 — вход.
   В UCF имена внутри общего модуля с префиксом `osca/`; сеть порта, используемого верхним модулем, получает имя верхнего (`clk16` на Go/Mini G, `osca/clk16` на Mini).
 - Soft Z80: T80s (VHDL, `t80/`) на плате, tv80 (Verilog, `sim/tv80/`) только для симуляции (`-DKG_CPU_TV80`). `kg_osca_cpu.v`: арбитр шины
   (CPU/DMA ядра), выходы процессора проходят через регистры по спаду (настоящий Z80 меняет выходы после фронта, OSCA на это опирается).
@@ -69,13 +73,13 @@ Perl-модули, а g++ пишет временные файлы в `C:\Window
   регистровым CE, CPU читает видео через `vram_rdata2`, запись линейного буфера спрайтов задержана на такт (14 триггеров в `sprite_system513.v`).
 - Системная RAM (512 КБ) на SDRAM: `kg_osca_sdram.v` (чтение спекулятивно по смене адреса слова, запись захватывается по стробу, регенерация
   не выполняется пока FPGA просит шину/владеет ею, два слота упреждающего чтения по `linecop_pc_o` для копроцессора, `WAIT_n` для CPU в `kg_osca_soc.v`).
-- Загрузка без PIC/EEPROM: подменённый boot ROM (`roms/rom_tail.asm` → `roms/boot_rom_mcu.bin`), FLOS 5.68 кладёт в RAM по `$1000` MCU-загрузчик, пока ядро в сбросе; MCU держится в сбросе до `sd_init`.
-- Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA или HDMI, OSD (`kg_osd_overlay` на `clk32`), сброс (OSD Reset / F12,
+- Загрузка без PIC/EEPROM: подменённый boot ROM (`roms/rom_tail.asm` → `roms/boot_rom_mcu.bin`), FLOS кладёт в RAM по `$1000` MCU-загрузчик (`LD_*` kind 0 `kg_mcu2`, без `LD_READY`), пока ядро в сбросе; `kg_mcu2` держится в сбросе до `sd_init`.
+- Периферия: PS/2-клавиатура из скан-кодов MCU (`kg_osca_ps2dev.v`), звук (`kg_osca_audio.v`), VGA или HDMI, OSD (`kg_l2_osd_overlay` на `clk32`: область по DE = `rgb_oe`, масштаб 2 в окне FLOS; изображение, синхросигналы и DE на 2 такта позже), сброс (OSD Reset / F12,
   кнопка платы, MCU BUSY). Джойстики: `JOY_L`/`JOY_R` MCU → `joy_bits` (порты 0/1 OSCA), на плате проверены. Не сделаны: PS/2-мышь, RTC, вторая SD, PIC/EEPROM (`sim/alt/kg_osca_eeprom.v` не симулировался).
-- Виртуальная SD (`rtl/io/kg_sd_emu.v`, логика карты из `nextor_sd.v` karabas-go-core-msx): SPI-слейв на выводах SD ядра, секторы через `img_sdc`
-  (file mounter MCU, слот 0, OSD «SD image»). Ncr = 2 (FLOS пропускает первый байт после команды); пока карта ждёт MCU (5–40 мс на сектор), CPU получает
+- Виртуальная SD (`rtl/io/kg_sd_emu.v`, логика карты из `nextor_sd.v` karabas-go-core-msx): SPI-слейв на выводах SD ядра, секторы через `SDC_*` `kg_mcu2`
+  (`kg_l2_img`, слот 0, OSD «SD image»; на сектор MCU даётся 58 мс при 96 МГц, затем запрос повторяется, до 3 раз). Ncr = 2 (FLOS пропускает первый байт после команды); пока карта ждёт MCU (5–40 мс на сектор), CPU получает
   WAIT на `IN $0A` (FLOS ждёт токен данных всего 8000 опросов), но не при поднятом BUSRQ (иначе видеоядро не получает шину: мигание, зависания).
-  Кеш 32 сектора (строка `lba[4:0]^lba[9:5]^lba[14:10]`, сквозная запись), burst MCU (Go: пины N9/M11, Mini/Mini G: `MCU_IO[1:0]`). Симуляция: `tb_boot +sdimg=<образ> +sddelay=<мс>`,
+  Кеш 32 сектора (строка `lba[4:0]^lba[9:5]^lba[14:10]`, сквозная запись). Симуляция: `tb_boot +sdimg=<образ> +sddelay=<мс>`,
   образ — `sim/scripts/make_fat16_image.py`.
 - Генерация Verilog из схем (`scripts/sch2v/`): `sch2v.py`, `gen_prims.py`, `patch_osca_top.py`, `trace_consumers.py` (нужен клон minexew/v6z80p, каталог схем
   `OSCA/v6z80p_plus_v1.1/osca676p`; проверенный вызов: `python3 scripts/sch2v/sch2v.py <каталог osca676p> <outdir> osca_pal`, затем `scripts/sch2v/patch_osca_top.py osca_pal.v osca_core.v`;

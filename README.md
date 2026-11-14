@@ -23,12 +23,15 @@ Status: work in progress, but in daily use on all three boards (see [What works]
   video RAM and sprite RAM share the 10 ns SRAM (three accesses per 16 MHz cycle).
 - **Keyboard and joysticks**: a PS/2 keyboard device fed with the scan codes of the board's MCU; the two joysticks of the MCU on OSCA's joystick ports.
 - **SD card**: the board's SD card, or a **virtual SD card** on a disk image chosen in the OSD (sector cache, fast MCU transfers).
-- **OSD** of the board's MCU: reset, SD card / image selection.
+- **OSD** of the board's MCU (the bitmap OSD of MCU link v2, `kg_mcu2` of the modules): reset, SD card / image selection.
 
 The logic of OSCA itself is not rewritten: it is converted from the original ISE schematics to Verilog by scripts in this
 repository (`src/scripts/sch2v/`), with a small set of documented patches for the shared memories.
 
 ## Using it
+The core talks to the MCU over **link v2**: it needs the board firmware (karabas-go-firmware) **v26111315 or later**;
+an older firmware does not load it.
+
 1. Copy `src/v6z80p.kg` to the SD card of the board, next to the other cores, and choose **V6Z80 OSCA** in the core menu.
 2. FLOS 6.14 is in the core and starts at once. For files, use an SD card formatted FAT16 (as on the V6Z80P),
    or a disk image (`.img`, `.vhd`, `.hdf`) in the OSD.
@@ -94,6 +97,9 @@ Checked on the hardware (Go, Mini, Mini G):
 - all the V6Z80P software at hand: the programs, demos and tests of the SD card image in the
   [releases](https://github.com/Caasper911/karabas-go-core-v6z80p/releases/latest) (from minexew/v6z80p), among them the *parity* demo
   (line copper), MOD playback and the interrupt test.
+
+These checks were made with MCU link v1. The move to link v2 (2026-11-14: `kg_mcu2`, the bitmap OSD, the file mounter of link v2) is
+built for the three boards but not yet checked on the hardware.
 
 Checked in simulation against the same core with ideal memories (frames bit-identical): chunky bitmap with the blitter,
 4 bitplanes, 16x16 tiles, line draw, sprites with flipping and heights, CPU reads of video RAM, sound DMA, the line copper.
